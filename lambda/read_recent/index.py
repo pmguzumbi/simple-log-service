@@ -1,20 +1,13 @@
+
 import json
 import boto3
 from botocore.exceptions import ClientError
 import os
 
-def get_dynamodb_table():
-    """Get DynamoDB table - allows for easier mocking and local testing"""
-    # Check for local endpoint (for integration testing)
-    endpoint_url = os.environ.get('DYNAMODB_ENDPOINT')
-    
-    if endpoint_url:
-        dynamodb = boto3.resource('dynamodb', endpoint_url=endpoint_url)
-    else:
-        dynamodb = boto3.resource('dynamodb')
-    
-    table_name = os.environ.get('TABLE_NAME', 'log-entries')
-    return dynamodb.Table(table_name)
+# Initialize DynamoDB client at module level
+dynamodb = boto3.resource('dynamodb')
+table_name = os.environ.get('TABLE_NAME', 'log-entries')
+table = dynamodb.Table(table_name)
 
 def lambda_handler(event, context):
     """
@@ -22,8 +15,6 @@ def lambda_handler(event, context):
     Returns entries sorted by datetime in descending order (newest first)
     """
     try:
-        table = get_dynamodb_table()
-        
         # Query using GSI datetime-index
         response = table.query(
             IndexName='datetime-index',
@@ -53,7 +44,6 @@ def lambda_handler(event, context):
         
         # Fallback to scan if GSI query fails
         try:
-            table = get_dynamodb_table()
             response = table.scan(Limit=100)
             items = response.get('Items', [])
             
