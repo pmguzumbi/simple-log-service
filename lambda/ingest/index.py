@@ -1,3 +1,4 @@
+
 import json
 import uuid
 import boto3
@@ -5,18 +6,10 @@ from datetime import datetime
 from botocore.exceptions import ClientError
 import os
 
-def get_dynamodb_table():
-    """Get DynamoDB table - allows for easier mocking and local testing"""
-    # Check for local endpoint (for integration testing)
-    endpoint_url = os.environ.get('DYNAMODB_ENDPOINT')
-    
-    if endpoint_url:
-        dynamodb = boto3.resource('dynamodb', endpoint_url=endpoint_url)
-    else:
-        dynamodb = boto3.resource('dynamodb')
-    
-    table_name = os.environ.get('TABLE_NAME', 'log-entries')
-    return dynamodb.Table(table_name)
+# Initialize DynamoDB client at module level
+dynamodb = boto3.resource('dynamodb')
+table_name = os.environ.get('TABLE_NAME', 'log-entries')
+table = dynamodb.Table(table_name)
 
 def lambda_handler(event, context):
     """
@@ -68,8 +61,7 @@ def lambda_handler(event, context):
             'record_type': 'log'
         }
         
-        # Get table and store entry
-        table = get_dynamodb_table()
+        # Store in DynamoDB
         table.put_item(Item=log_entry)
         
         return {
@@ -98,3 +90,4 @@ def lambda_handler(event, context):
                 'details': str(e)
             })
         }
+
