@@ -4,8 +4,15 @@ from botocore.exceptions import ClientError
 import os
 
 def get_dynamodb_table():
-    """Get DynamoDB table - allows for easier mocking"""
-    dynamodb = boto3.resource('dynamodb')
+    """Get DynamoDB table - allows for easier mocking and local testing"""
+    # Check for local endpoint (for integration testing)
+    endpoint_url = os.environ.get('DYNAMODB_ENDPOINT')
+    
+    if endpoint_url:
+        dynamodb = boto3.resource('dynamodb', endpoint_url=endpoint_url)
+    else:
+        dynamodb = boto3.resource('dynamodb')
+    
     table_name = os.environ.get('TABLE_NAME', 'log-entries')
     return dynamodb.Table(table_name)
 
@@ -83,3 +90,4 @@ def lambda_handler(event, context):
                 'details': str(e)
             })
         }
+
