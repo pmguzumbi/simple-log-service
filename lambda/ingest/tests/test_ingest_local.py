@@ -17,20 +17,25 @@ class TestIngestLambdaLocal(unittest.TestCase):
         self.mock_dynamodb = MagicMock()
         self.mock_dynamodb.Table.return_value = self.mock_table
         
+        # Clear any cached imports
+        if 'index' in sys.modules:
+            del sys.modules['index']
+        
+    @patch.dict(os.environ, {'TABLE_NAME': 'log-entries'})
     @patch('boto3.resource')
     def test_valid_log_entry(self, mock_boto3):
         """Test ingesting a valid log entry"""
         mock_boto3.return_value = self.mock_dynamodb
         
         # Import after mocking
-        from index import lambda_handler
+        import index
         
         event = {
             'severity': 'info',
             'message': 'Test log message'
         }
         
-        response = lambda_handler(event, None)
+        response = index.lambda_handler(event, None)
         
         self.assertEqual(response['statusCode'], 201)
         body = json.loads(response['body'])
@@ -43,94 +48,102 @@ class TestIngestLambdaLocal(unittest.TestCase):
         # Verify DynamoDB put_item was called
         self.mock_table.put_item.assert_called_once()
         
+    @patch.dict(os.environ, {'TABLE_NAME': 'log-entries'})
     @patch('boto3.resource')
     def test_missing_severity(self, mock_boto3):
         """Test with missing severity field"""
         mock_boto3.return_value = self.mock_dynamodb
         
-        from index import lambda_handler
+        import index
         
         event = {
             'message': 'Test log message'
         }
         
-        response = lambda_handler(event, None)
+        response = index.lambda_handler(event, None)
         
         self.assertEqual(response['statusCode'], 400)
         body = json.loads(response['body'])
         self.assertIn('error', body)
         
+    @patch.dict(os.environ, {'TABLE_NAME': 'log-entries'})
     @patch('boto3.resource')
     def test_missing_message(self, mock_boto3):
         """Test with missing message field"""
         mock_boto3.return_value = self.mock_dynamodb
         
-        from index import lambda_handler
+        import index
         
         event = {
             'severity': 'info'
         }
         
-        response = lambda_handler(event, None)
+        response = index.lambda_handler(event, None)
         
         self.assertEqual(response['statusCode'], 400)
         body = json.loads(response['body'])
         self.assertIn('error', body)
         
+    @patch.dict(os.environ, {'TABLE_NAME': 'log-entries'})
     @patch('boto3.resource')
     def test_invalid_severity(self, mock_boto3):
         """Test with invalid severity value"""
         mock_boto3.return_value = self.mock_dynamodb
         
-        from index import lambda_handler
+        import index
         
         event = {
             'severity': 'critical',
             'message': 'Test log message'
         }
         
-        response = lambda_handler(event, None)
+        response = index.lambda_handler(event, None)
         
         self.assertEqual(response['statusCode'], 400)
         body = json.loads(response['body'])
         self.assertIn('error', body)
         self.assertIn('Invalid severity', body['error'])
         
+    @patch.dict(os.environ, {'TABLE_NAME': 'log-entries'})
     @patch('boto3.resource')
     def test_all_severity_levels(self, mock_boto3):
         """Test all valid severity levels"""
         mock_boto3.return_value = self.mock_dynamodb
         
-        from index import lambda_handler
+        import index
         
         severities = ['info', 'warning', 'error']
         
         for severity in severities:
+            # Reset mock for each iteration
+            self.mock_table.reset_mock()
+            
             event = {
                 'severity': severity,
                 'message': f'Test {severity} message'
             }
             
-            response = lambda_handler(event, None)
+            response = index.lambda_handler(event, None)
             
-            self.assertEqual(response['statusCode'], 201)
+            self.assertEqual(response['statusCode'], 201, f"Failed for severity: {severity}")
             body = json.loads(response['body'])
             self.assertEqual(body['log_entry']['severity'], severity)
             
+    @patch.dict(os.environ, {'TABLE_NAME': 'log-entries'})
     @patch('boto3.resource')
     def test_dynamodb_error(self, mock_boto3):
         """Test DynamoDB error handling"""
         mock_boto3.return_value = self.mock_dynamodb
         self.mock_table.put_item.side_effect = Exception('DynamoDB error')
         
-        from index import lambda_handler
+        import index
         
         event = {
             'severity': 'info',
             'message': 'Test log message'
         }
         
-        response = lambda_handler(event, None)
+        response = index.lambda_handler(event, None)
         
         self.assertEqual(response['statusCode'], 500)
         body = json.loads(response['body'])
@@ -138,4 +151,3 @@ class TestIngestLambdaLocal(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-
