@@ -1,10 +1,14 @@
-
 import json
 import uuid
 import boto3
 from datetime import datetime
 from botocore.exceptions import ClientError
 import os
+
+# Initialize DynamoDB client at module level
+dynamodb = boto3.resource('dynamodb')
+table_name = os.environ.get('TABLE_NAME', 'log-entries')
+table = dynamodb.Table(table_name)
 
 def lambda_handler(event, context):
     """
@@ -16,11 +20,6 @@ def lambda_handler(event, context):
         "message": "Log message text"
     }
     """
-    # Initialize DynamoDB client inside handler for testability
-    dynamodb = boto3.resource('dynamodb')
-    table_name = os.environ.get('TABLE_NAME', 'log-entries')
-    table = dynamodb.Table(table_name)
-    
     try:
         # Parse input
         if isinstance(event, str):
