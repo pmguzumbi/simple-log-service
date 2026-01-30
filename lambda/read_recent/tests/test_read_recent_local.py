@@ -14,8 +14,6 @@ class TestReadRecentLambdaLocal(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.mock_table = MagicMock()
-        self.mock_dynamodb = MagicMock()
-        self.mock_dynamodb.Table.return_value = self.mock_table
         
         # Create mock log entries
         self.mock_entries = []
@@ -30,16 +28,12 @@ class TestReadRecentLambdaLocal(unittest.TestCase):
                 'record_type': 'log'
             }
             self.mock_entries.append(entry)
-            
-        # Clear any cached imports
-        if 'index' in sys.modules:
-            del sys.modules['index']
     
     @patch.dict(os.environ, {'TABLE_NAME': 'log-entries'})
-    @patch('boto3.resource')
-    def test_successful_query(self, mock_boto3):
+    @patch('index.get_dynamodb_table')
+    def test_successful_query(self, mock_get_table):
         """Test successful retrieval of log entries"""
-        mock_boto3.return_value = self.mock_dynamodb
+        mock_get_table.return_value = self.mock_table
         self.mock_table.query.return_value = {
             'Items': self.mock_entries
         }
@@ -57,10 +51,10 @@ class TestReadRecentLambdaLocal(unittest.TestCase):
         self.mock_table.query.assert_called_once()
         
     @patch.dict(os.environ, {'TABLE_NAME': 'log-entries'})
-    @patch('boto3.resource')
-    def test_empty_results(self, mock_boto3):
+    @patch('index.get_dynamodb_table')
+    def test_empty_results(self, mock_get_table):
         """Test with no log entries"""
-        mock_boto3.return_value = self.mock_dynamodb
+        mock_get_table.return_value = self.mock_table
         self.mock_table.query.return_value = {
             'Items': []
         }
@@ -75,12 +69,12 @@ class TestReadRecentLambdaLocal(unittest.TestCase):
         self.assertEqual(len(body['log_entries']), 0)
         
     @patch.dict(os.environ, {'TABLE_NAME': 'log-entries'})
-    @patch('boto3.resource')
-    def test_query_fallback_to_scan(self, mock_boto3):
+    @patch('index.get_dynamodb_table')
+    def test_query_fallback_to_scan(self, mock_get_table):
         """Test fallback to scan when query fails"""
         from botocore.exceptions import ClientError
         
-        mock_boto3.return_value = self.mock_dynamodb
+        mock_get_table.return_value = self.mock_table
         self.mock_table.query.side_effect = ClientError(
             {'Error': {'Code': 'ValidationException', 'Message': 'Query failed'}},
             'Query'
@@ -99,12 +93,12 @@ class TestReadRecentLambdaLocal(unittest.TestCase):
         self.assertIn('scan fallback', body['note'])
         
     @patch.dict(os.environ, {'TABLE_NAME': 'log-entries'})
-    @patch('boto3.resource')
-    def test_complete_failure(self, mock_boto3):
+    @patch('index.get_dynamodb_table')
+    def test_complete_failure(self, mock_get_table):
         """Test when both query and scan fail"""
         from botocore.exceptions import ClientError
         
-        mock_boto3.return_value = self.mock_dynamodb
+        mock_get_table.return_value = self.mock_table
         self.mock_table.query.side_effect = ClientError(
             {'Error': {'Code': 'ValidationException', 'Message': 'Query failed'}},
             'Query'
@@ -120,12 +114,12 @@ class TestReadRecentLambdaLocal(unittest.TestCase):
         self.assertIn('error', body)
         
     @patch.dict(os.environ, {'TABLE_NAME': 'log-entries'})
-    @patch('boto3.resource')
-    def test_entries_sorted_by_datetime(self, mock_boto3):
+    @patch('index.get_dynamodb_table')
+    def test_entries_sorted_by_datetime(self, mock_get_table):
         """Test that entries are sorted by datetime descending"""
         from botocore.exceptions import ClientError
         
-        mock_boto3.return_value = self.mock_dynamodb
+        mock_get_table.return_value = self.mock_table
         
         # Create unsorted entries
         unsorted_entries = self.mock_entries.copy()
@@ -154,4 +148,3 @@ class TestReadRecentLambdaLocal(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-
