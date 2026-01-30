@@ -5,10 +5,11 @@ from datetime import datetime
 from botocore.exceptions import ClientError
 import os
 
-# Initialize DynamoDB client
-dynamodb = boto3.resource('dynamodb')
-table_name = os.environ.get('TABLE_NAME', 'log-entries')
-table = dynamodb.Table(table_name)
+def get_dynamodb_table():
+    """Get DynamoDB table - allows for easier mocking"""
+    dynamodb = boto3.resource('dynamodb')
+    table_name = os.environ.get('TABLE_NAME', 'log-entries')
+    return dynamodb.Table(table_name)
 
 def lambda_handler(event, context):
     """
@@ -60,7 +61,8 @@ def lambda_handler(event, context):
             'record_type': 'log'
         }
         
-        # Store in DynamoDB
+        # Get table and store entry
+        table = get_dynamodb_table()
         table.put_item(Item=log_entry)
         
         return {
@@ -89,4 +91,3 @@ def lambda_handler(event, context):
                 'details': str(e)
             })
         }
-
