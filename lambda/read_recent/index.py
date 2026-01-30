@@ -3,10 +3,11 @@ import boto3
 from botocore.exceptions import ClientError
 import os
 
-# Initialize DynamoDB client
-dynamodb = boto3.resource('dynamodb')
-table_name = os.environ.get('TABLE_NAME', 'log-entries')
-table = dynamodb.Table(table_name)
+def get_dynamodb_table():
+    """Get DynamoDB table - allows for easier mocking"""
+    dynamodb = boto3.resource('dynamodb')
+    table_name = os.environ.get('TABLE_NAME', 'log-entries')
+    return dynamodb.Table(table_name)
 
 def lambda_handler(event, context):
     """
@@ -14,6 +15,8 @@ def lambda_handler(event, context):
     Returns entries sorted by datetime in descending order (newest first)
     """
     try:
+        table = get_dynamodb_table()
+        
         # Query using GSI datetime-index
         response = table.query(
             IndexName='datetime-index',
@@ -43,6 +46,7 @@ def lambda_handler(event, context):
         
         # Fallback to scan if GSI query fails
         try:
+            table = get_dynamodb_table()
             response = table.scan(Limit=100)
             items = response.get('Items', [])
             
@@ -79,4 +83,3 @@ def lambda_handler(event, context):
                 'details': str(e)
             })
         }
-
