@@ -1,75 +1,53 @@
+
 import unittest
 import json
+import sys
 import os
-from moto import mock_dynamodb
-import boto3
+from unittest.mock import patch, MagicMock
 from datetime import datetime, timedelta
+
+# Add parent directory to path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 
 class TestReadRecentLambdaLocal(unittest.TestCase):
-    """Local tests for Read Recent Lambda using moto for AWS mocking"""
+    """Local tests for Read Recent Lambda without AWS connectivity"""
     
-    @mock_dynamodb
     def setUp(self):
-        """Set up test fixtures with mocked DynamoDB"""
-        # Set environment variables
+        """Set up test fixtures"""
+        # Clear cached module
+        if 'index' in sys.modules:
+            del sys.modules['index']
+            
+        # Set environment
         os.environ['TABLE_NAME'] = 'log-entries'
         os.environ['AWS_DEFAULT_REGION'] = 'eu-west-1'
         
-        # Create mock DynamoDB table
-        dynamodb = boto3.resource('dynamodb', region_name='eu-west-1')
-        self.table = dynamodb.create_table(
-            TableName='log-entries',
-            KeySchema=[
-                {'AttributeName': 'id', 'KeyType': 'HASH'},
-                {'AttributeName': 'datetime', 'KeyType': 'RANGE'}
-            ],
-            AttributeDefinitions=[
-                {'AttributeName': 'id', 'AttributeType': 'S'},
-                {'AttributeName': 'datetime', 'AttributeType': 'S'},
-                {'AttributeName': 'record_type', 'AttributeType': 'S'}
-            ],
-            GlobalSecondaryIndexes=[
-                {
-                    'IndexName': 'datetime-index',
-                    'KeySchema': [
-                        {'AttributeName': 'record_type', 'KeyType': 'HASH'},
-                        {'AttributeName': 'datetime', 'KeyType': 'RANGE'}
-                    ],
-                    'Projection': {'ProjectionType': 'ALL'},
-                    'ProvisionedThroughput': {
-                        'ReadCapacityUnits': 5,
-                        'WriteCapacityUnits': 5
-                    }
-                }
-            ],
-            BillingMode='PROVISIONED',
-            ProvisionedThroughput={
-                'ReadCapacityUnits': 5,
-                'WriteCapacityUnits': 5
-            }
-        )
-        
-        # Add test data
+        # Create mock log entries
+        self.mock_entries = []
         base_time = datetime.utcnow()
+        
         for i in range(10):
-            self.table.put_item(Item={
+            entry = {
                 'id': f'test-id-{i}',
                 'datetime': (base_time - timedelta(minutes=i)).isoformat() + 'Z',
                 'severity': ['info', 'warning', 'error'][i % 3],
                 'message': f'Test log message {i}',
                 'record_type': 'log'
-            })
+            }
+            self.mock_entries.append(entry)
     
-    @mock_dynamodb
-    def test_successful_query(self):
+    @patch('boto3.resource')
+    def test_successful_query(self, mock_boto3):
         """Test successful retrieval of log entries"""
-        import sys
-        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+        mock_table = MagicMock()
+        mock_table.query.return_value = {
+            'Items': self.mock_entries
+        }
+        mock_dynamodb = MagicMock()
+        mock_dynamodb.Table.return_value = mock_table
+        mock_boto3.return_value = mock_dynamodb
         
-        if 'index' in sys.modules:
-            del sys.modules['index']
-            
         import index
         
         response = index.lambda_handler({}, None)
@@ -79,49 +57,20 @@ class TestReadRecentLambdaLocal(unittest.TestCase):
         self.assertEqual(body['count'], 10)
         self.assertEqual(len(body['log_entries']), 10)
         
-    @mock_dynamodb
-    def test_empty_results(self):
+        # Verify query was called
+        mock_table.query.assert_called_once()
+        
+    @patch('boto3.resource')
+    def test_empty_results(self, mock_boto3):
         """Test with no log entries"""
-        # Create empty table
-        dynamodb = boto3.resource('dynamodb', region_name='eu-west-1')
-        dynamodb.create_table(
-            TableName='log-entries',
-            KeySchema=[
-                {'AttributeName': 'id', 'KeyType': 'HASH'},
-                {'AttributeName': 'datetime', 'KeyType': 'RANGE'}
-            ],
-            AttributeDefinitions=[
-                {'AttributeName': 'id', 'AttributeType': 'S'},
-                {'AttributeName': 'datetime', 'AttributeType': 'S'},
-                {'AttributeName': 'record_type', 'AttributeType': 'S'}
-            ],
-            GlobalSecondaryIndexes=[
-                {
-                    'IndexName': 'datetime-index',
-                    'KeySchema': [
-                        {'AttributeName': 'record_type', 'KeyType': 'HASH'},
-                        {'AttributeName': 'datetime', 'KeyType': 'RANGE'}
-                    ],
-                    'Projection': {'ProjectionType': 'ALL'},
-                    'ProvisionedThroughput': {
-                        'ReadCapacityUnits': 5,
-                        'WriteCapacityUnits': 5
-                    }
-                }
-            ],
-            BillingMode='PROVISIONED',
-            ProvisionedThroughput={
-                'ReadCapacityUnits': 5,
-                'WriteCapacityUnits': 5
-            }
-        )
+        mock_table = MagicMock()
+        mock_table.query.return_value = {
+            'Items': []
+        }
+        mock_dynamodb = MagicMock()
+        mock_dynamodb.Table.return_value = mock_table
+        mock_boto3.return_value = mock_dynamodb
         
-        import sys
-        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-        
-        if 'index' in sys.modules:
-            del sys.modules['index']
-            
         import index
         
         response = index.lambda_handler({}, None)
@@ -129,7 +78,58 @@ class TestReadRecentLambdaLocal(unittest.TestCase):
         self.assertEqual(response['statusCode'], 200)
         body = json.loads(response['body'])
         self.assertEqual(body['count'], 0)
+        self.assertEqual(len(body['log_entries']), 0)
+        
+    @patch('boto3.resource')
+    def test_query_fallback_to_scan(self, mock_boto3):
+        """Test fallback to scan when query fails"""
+        from botocore.exceptions import ClientError
+        
+        mock_table = MagicMock()
+        mock_table.query.side_effect = ClientError(
+            {'Error': {'Code': 'ValidationException', 'Message': 'Query failed'}},
+            'Query'
+        )
+        mock_table.scan.return_value = {
+            'Items': self.mock_entries
+        }
+        mock_dynamodb = MagicMock()
+        mock_dynamodb.Table.return_value = mock_table
+        mock_boto3.return_value = mock_dynamodb
+        
+        import index
+        
+        response = index.lambda_handler({}, None)
+        
+        self.assertEqual(response['statusCode'], 200)
+        body = json.loads(response['body'])
+        self.assertIn('note', body)
+        self.assertIn('scan fallback', body['note'])
+        
+    @patch('boto3.resource')
+    def test_complete_failure(self, mock_boto3):
+        """Test when both query and scan fail"""
+        from botocore.exceptions import ClientError
+        
+        mock_table = MagicMock()
+        mock_table.query.side_effect = ClientError(
+            {'Error': {'Code': 'ValidationException', 'Message': 'Query failed'}},
+            'Query'
+        )
+        mock_table.scan.side_effect = Exception('Scan failed')
+        mock_dynamodb = MagicMock()
+        mock_dynamodb.Table.return_value = mock_table
+        mock_boto3.return_value = mock_dynamodb
+        
+        import index
+        
+        response = index.lambda_handler({}, None)
+        
+        self.assertEqual(response['statusCode'], 500)
+        body = json.loads(response['body'])
+        self.assertIn('error', body)
 
 
 if __name__ == '__main__':
     unittest.main()
+
