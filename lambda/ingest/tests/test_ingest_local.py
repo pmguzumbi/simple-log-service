@@ -14,20 +14,13 @@ class TestIngestLambdaLocal(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.mock_table = MagicMock()
-        self.mock_dynamodb = MagicMock()
-        self.mock_dynamodb.Table.return_value = self.mock_table
-        
-        # Clear any cached imports
-        if 'index' in sys.modules:
-            del sys.modules['index']
         
     @patch.dict(os.environ, {'TABLE_NAME': 'log-entries'})
-    @patch('boto3.resource')
-    def test_valid_log_entry(self, mock_boto3):
+    @patch('index.get_dynamodb_table')
+    def test_valid_log_entry(self, mock_get_table):
         """Test ingesting a valid log entry"""
-        mock_boto3.return_value = self.mock_dynamodb
+        mock_get_table.return_value = self.mock_table
         
-        # Import after mocking
         import index
         
         event = {
@@ -49,10 +42,10 @@ class TestIngestLambdaLocal(unittest.TestCase):
         self.mock_table.put_item.assert_called_once()
         
     @patch.dict(os.environ, {'TABLE_NAME': 'log-entries'})
-    @patch('boto3.resource')
-    def test_missing_severity(self, mock_boto3):
+    @patch('index.get_dynamodb_table')
+    def test_missing_severity(self, mock_get_table):
         """Test with missing severity field"""
-        mock_boto3.return_value = self.mock_dynamodb
+        mock_get_table.return_value = self.mock_table
         
         import index
         
@@ -67,10 +60,10 @@ class TestIngestLambdaLocal(unittest.TestCase):
         self.assertIn('error', body)
         
     @patch.dict(os.environ, {'TABLE_NAME': 'log-entries'})
-    @patch('boto3.resource')
-    def test_missing_message(self, mock_boto3):
+    @patch('index.get_dynamodb_table')
+    def test_missing_message(self, mock_get_table):
         """Test with missing message field"""
-        mock_boto3.return_value = self.mock_dynamodb
+        mock_get_table.return_value = self.mock_table
         
         import index
         
@@ -85,10 +78,10 @@ class TestIngestLambdaLocal(unittest.TestCase):
         self.assertIn('error', body)
         
     @patch.dict(os.environ, {'TABLE_NAME': 'log-entries'})
-    @patch('boto3.resource')
-    def test_invalid_severity(self, mock_boto3):
+    @patch('index.get_dynamodb_table')
+    def test_invalid_severity(self, mock_get_table):
         """Test with invalid severity value"""
-        mock_boto3.return_value = self.mock_dynamodb
+        mock_get_table.return_value = self.mock_table
         
         import index
         
@@ -105,10 +98,10 @@ class TestIngestLambdaLocal(unittest.TestCase):
         self.assertIn('Invalid severity', body['error'])
         
     @patch.dict(os.environ, {'TABLE_NAME': 'log-entries'})
-    @patch('boto3.resource')
-    def test_all_severity_levels(self, mock_boto3):
+    @patch('index.get_dynamodb_table')
+    def test_all_severity_levels(self, mock_get_table):
         """Test all valid severity levels"""
-        mock_boto3.return_value = self.mock_dynamodb
+        mock_get_table.return_value = self.mock_table
         
         import index
         
@@ -130,10 +123,10 @@ class TestIngestLambdaLocal(unittest.TestCase):
             self.assertEqual(body['log_entry']['severity'], severity)
             
     @patch.dict(os.environ, {'TABLE_NAME': 'log-entries'})
-    @patch('boto3.resource')
-    def test_dynamodb_error(self, mock_boto3):
+    @patch('index.get_dynamodb_table')
+    def test_dynamodb_error(self, mock_get_table):
         """Test DynamoDB error handling"""
-        mock_boto3.return_value = self.mock_dynamodb
+        mock_get_table.return_value = self.mock_table
         self.mock_table.put_item.side_effect = Exception('DynamoDB error')
         
         import index
