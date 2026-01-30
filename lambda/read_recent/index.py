@@ -4,16 +4,16 @@ import boto3
 from botocore.exceptions import ClientError
 import os
 
-# Initialize DynamoDB client at module level
-dynamodb = boto3.resource('dynamodb')
-table_name = os.environ.get('TABLE_NAME', 'log-entries')
-table = dynamodb.Table(table_name)
-
 def lambda_handler(event, context):
     """
     Lambda function to retrieve the 100 most recent log entries
     Returns entries sorted by datetime in descending order (newest first)
     """
+    # Initialize DynamoDB client inside handler for testability
+    dynamodb = boto3.resource('dynamodb')
+    table_name = os.environ.get('TABLE_NAME', 'log-entries')
+    table = dynamodb.Table(table_name)
+    
     try:
         # Query using GSI datetime-index
         response = table.query(
