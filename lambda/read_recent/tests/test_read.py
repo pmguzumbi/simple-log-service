@@ -6,7 +6,7 @@ Unit tests for read_recent Lambda function
 import json
 import os
 import pytest
-from moto import mock_dynamodb
+from moto import mock_aws
 import boto3
 from datetime import datetime
 import time
@@ -30,7 +30,7 @@ def aws_credentials():
 @pytest.fixture
 def dynamodb_table_with_data(aws_credentials):
     """Create mock DynamoDB table with test data"""
-    with mock_dynamodb():
+    with mock_aws():
         dynamodb = boto3.resource('dynamodb', region_name='eu-west-2')
         
         table = dynamodb.create_table(
