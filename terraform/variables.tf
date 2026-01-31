@@ -19,7 +19,7 @@ variable "aws_region" {
 variable "enable_config" {
   description = "Enable AWS Config for compliance monitoring"
   type        = bool
-  default     = true
+  default     = false  # Changed from true - you already have a Config recorder
 }
 
 variable "config_snapshot_frequency" {
@@ -37,25 +37,23 @@ variable "alarm_email" {
   type        = string
   default     = ""
 }
+
 variable "allowed_ingest_principals" {
   description = "List of AWS principals (ARNs) allowed to assume the log ingest role"
   type        = list(string)
   default     = []
-  # Example: ["arn:aws:iam::123456789012:root", "arn:aws:iam::123456789012:role/MyAppRole"]
 }
 
 variable "allowed_read_principals" {
   description = "List of AWS principals (ARNs) allowed to assume the log read role"
   type        = list(string)
   default     = []
-  # Example: ["arn:aws:iam::123456789012:root", "arn:aws:iam::123456789012:role/MyAppRole"]
 }
 
 variable "allowed_full_access_principals" {
   description = "List of AWS principals (ARNs) allowed to assume the full access role"
   type        = list(string)
   default     = []
-  # Example: ["arn:aws:iam::123456789012:root"]
 }
 
 variable "external_id_ingest" {
@@ -78,3 +76,4 @@ variable "external_id_full_access" {
   default     = ""
   sensitive   = true
 }
+
