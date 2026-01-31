@@ -1,17 +1,15 @@
-# CloudWatch monitoring configuration
-
-# SNS topic for alarms
+# SNS topic for CloudWatch alarms
 resource "aws_sns_topic" "alarms" {
-  name              = "${local.name_prefix}-alarms"
-  display_name      = "Simple Log Service Alarms"
-  kms_master_key_id = aws_kms_key.logs.id
-  
+  name              = "${var.project_name}-alarms-${var.environment}"
+  kms_master_key_id = aws_kms_key.cloudwatch.id
+
   tags = {
-    Name = "${local.name_prefix}-alarms"
+    Name        = "${var.project_name}-alarms-${var.environment}"
+    Environment = var.environment
+    Project     = var.project_name
   }
 }
 
-# SNS topic subscription (email)
 resource "aws_sns_topic_subscription" "alarm_email" {
   count     = var.alarm_email != "" ? 1 : 0
   topic_arn = aws_sns_topic.alarms.arn
@@ -19,212 +17,216 @@ resource "aws_sns_topic_subscription" "alarm_email" {
   endpoint  = var.alarm_email
 }
 
-# CloudWatch alarm for Lambda errors (ingest)
+# CloudWatch alarms for Lambda functions
 resource "aws_cloudwatch_metric_alarm" "ingest_errors" {
-  alarm_name          = "${local.name_prefix}-ingest-errors"
+  alarm_name          = "${var.project_name}-ingest-errors-${var.environment}"
   comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = "2"
+  evaluation_periods  = 1
   metric_name         = "Errors"
   namespace           = "AWS/Lambda"
-  period              = "300"
+  period              = 300
   statistic           = "Sum"
-  threshold           = "5"
-  alarm_description   = "This metric monitors ingest Lambda errors"
+  threshold           = 5
+  alarm_description   = "This metric monitors ingest lambda errors"
   alarm_actions       = [aws_sns_topic.alarms.arn]
-  
+
   dimensions = {
     FunctionName = aws_lambda_function.ingest_log.function_name
   }
-  
+
   tags = {
-    Name = "${local.name_prefix}-ingest-errors"
+    Name        = "${var.project_name}-ingest-errors-alarm-${var.environment}"
+    Environment = var.environment
+    Project     = var.project_name
   }
 }
 
-# CloudWatch alarm for Lambda errors (read)
-resource "aws_cloudwatch_metric_alarm" "read_errors" {
-  alarm_name          = "${local.name_prefix}-read-errors"
+resource "aws_cloudwatch_metric_alarm" "ingest_throttles" {
+  alarm_name          = "${var.project_name}-ingest-throttles-${var.environment}"
   comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = "2"
+  evaluation_periods  = 1
+  metric_name         = "Throttles"
+  namespace           = "AWS/Lambda"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 5
+  alarm_description   = "This metric monitors ingest lambda throttles"
+  alarm_actions       = [aws_sns_topic.alarms.arn]
+
+  dimensions = {
+    FunctionName = aws_lambda_function.ingest_log.function_name
+  }
+
+  tags = {
+    Name        = "${var.project_name}-ingest-throttles-alarm-${var.environment}"
+    Environment = var.environment
+    Project     = var.project_name
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "read_recent_errors" {
+  alarm_name          = "${var.project_name}-read-recent-errors-${var.environment}"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
   metric_name         = "Errors"
   namespace           = "AWS/Lambda"
-  period              = "300"
+  period              = 300
   statistic           = "Sum"
-  threshold           = "5"
-  alarm_description   = "This metric monitors read Lambda errors"
+  threshold           = 5
+  alarm_description   = "This metric monitors read recent lambda errors"
   alarm_actions       = [aws_sns_topic.alarms.arn]
-  
+
   dimensions = {
     FunctionName = aws_lambda_function.read_recent.function_name
   }
-  
+
   tags = {
-    Name = "${local.name_prefix}-read-errors"
+    Name        = "${var.project_name}-read-recent-errors-alarm-${var.environment}"
+    Environment = var.environment
+    Project     = var.project_name
   }
 }
 
-# CloudWatch alarm for Lambda duration (ingest)
-resource "aws_cloudwatch_metric_alarm" "ingest_duration" {
-  alarm_name          = "${local.name_prefix}-ingest-duration"
+resource "aws_cloudwatch_metric_alarm" "read_recent_throttles" {
+  alarm_name          = "${var.project_name}-read-recent-throttles-${var.environment}"
   comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = "2"
-  metric_name         = "Duration"
+  evaluation_periods  = 1
+  metric_name         = "Throttles"
   namespace           = "AWS/Lambda"
-  period              = "300"
-  statistic           = "Average"
-  threshold           = "5000"  # 5 seconds
-  alarm_description   = "This metric monitors ingest Lambda duration"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 5
+  alarm_description   = "This metric monitors read recent lambda throttles"
   alarm_actions       = [aws_sns_topic.alarms.arn]
-  
+
   dimensions = {
-    FunctionName = aws_lambda_function.ingest_log.function_name
+    FunctionName = aws_lambda_function.read_recent.function_name
   }
-  
+
   tags = {
-    Name = "${local.name_prefix}-ingest-duration"
+    Name        = "${var.project_name}-read-recent-throttles-alarm-${var.environment}"
+    Environment = var.environment
+    Project     = var.project_name
   }
 }
 
-# CloudWatch alarm for DynamoDB throttling
-resource "aws_cloudwatch_metric_alarm" "dynamodb_throttles" {
-  alarm_name          = "${local.name_prefix}-dynamodb-throttles"
+# CloudWatch alarms for DynamoDB
+resource "aws_cloudwatch_metric_alarm" "dynamodb_read_throttles" {
+  alarm_name          = "${var.project_name}-dynamodb-read-throttles-${var.environment}"
   comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = "1"
-  metric_name         = "UserErrors"
+  evaluation_periods  = 1
+  metric_name         = "ReadThrottleEvents"
   namespace           = "AWS/DynamoDB"
-  period              = "300"
+  period              = 300
   statistic           = "Sum"
-  threshold           = "10"
-  alarm_description   = "This metric monitors DynamoDB throttling"
+  threshold           = 5
+  alarm_description   = "This metric monitors DynamoDB read throttles"
   alarm_actions       = [aws_sns_topic.alarms.arn]
-  
+
   dimensions = {
     TableName = aws_dynamodb_table.logs.name
   }
-  
+
   tags = {
-    Name = "${local.name_prefix}-dynamodb-throttles"
+    Name        = "${var.project_name}-dynamodb-read-throttles-alarm-${var.environment}"
+    Environment = var.environment
+    Project     = var.project_name
   }
 }
 
-# CloudWatch alarm for API Gateway 4xx errors
-resource "aws_cloudwatch_metric_alarm" "api_4xx_errors" {
-  alarm_name          = "${local.name_prefix}-api-4xx-errors"
+resource "aws_cloudwatch_metric_alarm" "dynamodb_write_throttles" {
+  alarm_name          = "${var.project_name}-dynamodb-write-throttles-${var.environment}"
   comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = "2"
-  metric_name         = "4XXError"
-  namespace           = "AWS/ApiGateway"
-  period              = "300"
+  evaluation_periods  = 1
+  metric_name         = "WriteThrottleEvents"
+  namespace           = "AWS/DynamoDB"
+  period              = 300
   statistic           = "Sum"
-  threshold           = "50"
-  alarm_description   = "This metric monitors API Gateway 4xx errors"
+  threshold           = 5
+  alarm_description   = "This metric monitors DynamoDB write throttles"
   alarm_actions       = [aws_sns_topic.alarms.arn]
-  
+
   dimensions = {
-    ApiName = aws_api_gateway_rest_api.main.name
+    TableName = aws_dynamodb_table.logs.name
   }
-  
+
   tags = {
-    Name = "${local.name_prefix}-api-4xx-errors"
+    Name        = "${var.project_name}-dynamodb-write-throttles-alarm-${var.environment}"
+    Environment = var.environment
+    Project     = var.project_name
   }
 }
 
-# CloudWatch alarm for API Gateway 5xx errors
-resource "aws_cloudwatch_metric_alarm" "api_5xx_errors" {
-  alarm_name          = "${local.name_prefix}-api-5xx-errors"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = "1"
-  metric_name         = "5XXError"
-  namespace           = "AWS/ApiGateway"
-  period              = "300"
-  statistic           = "Sum"
-  threshold           = "5"
-  alarm_description   = "This metric monitors API Gateway 5xx errors"
-  alarm_actions       = [aws_sns_topic.alarms.arn]
-  
-  dimensions = {
-    ApiName = aws_api_gateway_rest_api.main.name
-  }
-  
-  tags = {
-    Name = "${local.name_prefix}-api-5xx-errors"
-  }
-}
-
-# CloudWatch Dashboard
+# CloudWatch Dashboard - FIXED METRIC FORMAT
 resource "aws_cloudwatch_dashboard" "main" {
-  dashboard_name = "${local.name_prefix}-dashboard"
-  
-    dashboard_body = jsonencode({
+  dashboard_name = "${var.project_name}-dashboard-${var.environment}"
+
+  dashboard_body = jsonencode({
     widgets = [
       {
         type = "metric"
         properties = {
           metrics = [
-            ["AWS/Lambda", "Invocations", "FunctionName", aws_lambda_function.ingest_log.function_name, { stat = "Sum" }],
-            ["AWS/Lambda", "Errors", "FunctionName", aws_lambda_function.ingest_log.function_name, { stat = "Sum" }],
-            ["AWS/Lambda", "Duration", "FunctionName", aws_lambda_function.ingest_log.function_name, { stat = "Average" }]
-          ]
-          period = 300
-          stat   = "Average"
-          region = data.aws_region.current.name
-          title  = "Ingest Lambda Metrics"
-        }
-      },
-      {
-        type = "metric"
-        properties = {
-          metrics = [
-            ["AWS/Lambda", "Invocations", "FunctionName", aws_lambda_function.read_recent.function_name, { stat = "Sum" }],
-            ["AWS/Lambda", "Errors", "FunctionName", aws_lambda_function.read_recent.function_name, { stat = "Sum" }],
-            ["AWS/Lambda", "Duration", "FunctionName", aws_lambda_function.read_recent.function_name, { stat = "Average" }]
-          ]
-          period = 300
-          stat   = "Average"
-          region = data.aws_region.current.name
-          title  = "Read Recent Lambda Metrics"
-        }
-      },
-      {
-        type = "metric"
-        properties = {
-          metrics = [
-            ["AWS/DynamoDB", "ConsumedReadCapacityUnits", "TableName", aws_dynamodb_table.logs.name, { stat = "Sum" }],
-            ["AWS/DynamoDB", "ConsumedWriteCapacityUnits", "TableName", aws_dynamodb_table.logs.name, { stat = "Sum" }]
-          ]
-          period = 300
-          stat   = "Average"
-          region = data.aws_region.current.name
-          title  = "DynamoDB Capacity"
-        }
-      },
-      {
-        type = "metric"
-        properties = {
-          metrics = [
-            ["AWS/ApiGateway", "Count", "ApiName", aws_api_gateway_rest_api.log_service.name, { stat = "Sum" }],
-            ["AWS/ApiGateway", "4XXError", "ApiName", aws_api_gateway_rest_api.log_service.name, { stat = "Sum" }],
-            ["AWS/ApiGateway", "5XXError", "ApiName", aws_api_gateway_rest_api.log_service.name, { stat = "Sum" }]
+            ["AWS/Lambda", "Invocations", "FunctionName", aws_lambda_function.ingest_log.function_name],
+            [".", "Errors", ".", "."]
           ]
           period = 300
           stat   = "Sum"
           region = data.aws_region.current.name
-          title  = "API Gateway Metrics"
+          title  = "Ingest Lambda Invocations and Errors"
         }
-      }
-    ]
-  }
+      },
       {
         type = "metric"
         properties = {
           metrics = [
-            ["SimpleLogService", "LogsIngested", { stat = "Sum" }],
-            [".", "LogsRetrieved", { stat = "Sum" }]
+            ["AWS/Lambda", "Duration", "FunctionName", aws_lambda_function.ingest_log.function_name],
+            [".", ".", ".", aws_lambda_function.read_recent.function_name]
+          ]
+          period = 300
+          stat   = "Average"
+          region = data.aws_region.current.name
+          title  = "Lambda Duration"
+        }
+      },
+      {
+        type = "metric"
+        properties = {
+          metrics = [
+            ["AWS/DynamoDB", "ConsumedReadCapacityUnits", "TableName", aws_dynamodb_table.logs.name],
+            [".", "ConsumedWriteCapacityUnits", ".", "."]
           ]
           period = 300
           stat   = "Sum"
-          region = var.aws_region
-          title  = "Custom Business Metrics"
+          region = data.aws_region.current.name
+          title  = "DynamoDB Capacity Units"
+        }
+      },
+      {
+        type = "metric"
+        properties = {
+          metrics = [
+            ["AWS/Lambda", "Invocations", "FunctionName", aws_lambda_function.read_recent.function_name],
+            [".", "Errors", ".", "."]
+          ]
+          period = 300
+          stat   = "Sum"
+          region = data.aws_region.current.name
+          title  = "Read Recent Lambda Invocations and Errors"
+        }
+      },
+      {
+        type = "metric"
+        properties = {
+          metrics = [
+            ["AWS/ApiGateway", "Count", "ApiName", aws_api_gateway_rest_api.log_service.name],
+            [".", "4XXError", ".", "."],
+            [".", "5XXError", ".", "."]
+          ]
+          period = 300
+          stat   = "Sum"
+          region = data.aws_region.current.name
+          title  = "API Gateway Requests and Errors"
         }
       }
     ]
