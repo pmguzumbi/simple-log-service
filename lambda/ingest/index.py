@@ -7,7 +7,7 @@ Validates input, generates unique IDs, and stores logs with timestamp
 import json
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 import boto3
 from decimal import Decimal
 
@@ -49,9 +49,9 @@ def lambda_handler(event, context):
             if field not in body:
                 return create_response(400, {'error': f'Missing required field: {field}'})
         
-        # Generate unique log ID and timestamp
+        # Generate unique log ID and timestamp (timezone-aware)
         log_id = str(uuid.uuid4())
-        timestamp = int(datetime.utcnow().timestamp())
+        timestamp = int(datetime.now(timezone.utc).timestamp())
         
         # Prepare log entry
         log_entry = {
