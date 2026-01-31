@@ -11,10 +11,8 @@ from datetime import datetime
 import boto3
 from decimal import Decimal
 
-# Initialize DynamoDB resource
+# Initialize DynamoDB resource (but don't get table yet)
 dynamodb = boto3.resource('dynamodb')
-table_name = os.environ['DYNAMODB_TABLE_NAME']
-table = dynamodb.Table(table_name)
 
 # Initialize CloudWatch client for custom metrics
 cloudwatch = boto3.client('cloudwatch')
@@ -32,6 +30,13 @@ def lambda_handler(event, context):
         dict: API Gateway response with status code and body
     """
     try:
+        # Get table name from environment variable (lazy load)
+        table_name = os.environ.get('DYNAMODB_TABLE_NAME')
+        if not table_name:
+            return create_response(500, {'error': 'DYNAMODB_TABLE_NAME not configured'})
+        
+        table = dynamodb.Table(table_name)
+        
         # Parse request body
         if 'body' not in event:
             return create_response(400, {'error': 'Missing request body'})
