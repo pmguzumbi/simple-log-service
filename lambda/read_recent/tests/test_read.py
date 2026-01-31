@@ -1,166 +1,164 @@
 
-"""
-Unit tests for read_recent Lambda function
-"""
-
 import json
 import os
 import pytest
 from moto import mock_aws
 import boto3
-from datetime import datetime, timezone
-import time
+from datetime import datetime, timedelta
 
-# Import the Lambda handler - use sys.path to avoid 'lambda' keyword issue
-import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from index import lambda_handler
+# Set environment variable before importing the handler
+os.environ['DYNAMODB_TABLE_NAME'] = 'test-logs-table'
 
+from lambda.read_recent.index import lambda_handler
 
 @pytest.fixture
 def aws_credentials():
-    """Mock AWS credentials for moto"""
+    """Mocked AWS Credentials for moto"""
     os.environ['AWS_ACCESS_KEY_ID'] = 'testing'
     os.environ['AWS_SECRET_ACCESS_KEY'] = 'testing'
     os.environ['AWS_SECURITY_TOKEN'] = 'testing'
     os.environ['AWS_SESSION_TOKEN'] = 'testing'
-    os.environ['AWS_DEFAULT_REGION'] = 'eu-west-2'
-
+    os.environ['AWS_DEFAULT_REGION'] = 'us-east-1'
 
 @pytest.fixture
-def mock_aws_services(aws_credentials):
-    """Create mock AWS services context"""
+def dynamodb_table_with_data(aws_credentials):
+    """Create a mocked DynamoDB table with test data"""
     with mock_aws():
-        yield
-
-
-@pytest.fixture
-def dynamodb_table_with_data(mock_aws_services):
-    """Create mock DynamoDB table with test data"""
-    dynamodb = boto3.resource('dynamodb', region_name='eu-west-2')
-    
-    table = dynamodb.create_table(
-        TableName='test-logs-table',
-        KeySchema=[
-            {'AttributeName': 'service_name', 'KeyType': 'HASH'},
-            {'AttributeName': 'timestamp', 'KeyType': 'RANGE'}
-        ],
-        AttributeDefinitions=[
-            {'AttributeName': 'service_name', 'AttributeType': 'S'},
-            {'AttributeName': 'timestamp', 'AttributeType': 'N'},
-            {'AttributeName': 'log_type', 'AttributeType': 'S'}
-        ],
-        GlobalSecondaryIndexes=[
+        # Create DynamoDB resource
+        dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
+        
+        # Create table
+        table = dynamodb.create_table(
+            TableName='test-logs-table',
+            KeySchema=[
+                {'AttributeName': 'log_id', 'KeyType': 'HASH'}
+            ],
+            AttributeDefinitions=[
+                {'AttributeName': 'log_id', 'AttributeType': 'S'}
+            ],
+            BillingMode='PAY_PER_REQUEST'
+        )
+        
+        # Wait for table to be created
+        table.meta.client.get_waiter('table_exists').wait(TableName='test-logs-table')
+        
+        # Add test data
+        current_time = datetime.utcnow()
+        test_logs = [
             {
-                'IndexName': 'TimestampIndex',
-                'KeySchema': [
-                    {'AttributeName': 'log_type', 'KeyType': 'HASH'},
-                    {'AttributeName': 'timestamp', 'KeyType': 'RANGE'}
-                ],
-                'Projection': {'ProjectionType': 'ALL'},
-                'ProvisionedThroughput': {
-                    'ReadCapacityUnits': 5,
-                    'WriteCapacityUnits': 5
-                }
-            }
-        ],
-        ProvisionedThroughput={
-            'ReadCapacityUnits': 5,
-            'WriteCapacityUnits': 5
-        }
-    )
-    
-    # Add test data
-    current_time = int(time.time())
-    for i in range(10):
-        table.put_item(
-            Item={
+                'log_id': 'log-1',
+                'timestamp': (current_time - timedelta(minutes=5)).isoformat(),
                 'service_name': 'test-service',
-                'timestamp': current_time - i,
-                'log_id': f'test-log-{i}',
                 'log_type': 'application',
                 'level': 'INFO',
-                'message': f'Test log message {i}'
+                'message': 'Test log 1'
+            },
+            {
+                'log_id': 'log-2',
+                'timestamp': (current_time - timedelta(minutes=10)).isoformat(),
+                'service_name': 'test-service',
+                'log_type': 'application',
+                'level': 'ERROR',
+                'message': 'Test log 2'
+            },
+            {
+                'log_id': 'log-3',
+                'timestamp': (current_time - timedelta(minutes=15)).isoformat(),
+                'service_name': 'other-service',
+                'log_type': 'system',
+                'level': 'WARNING',
+                'message': 'Test log 3'
             }
-        )
-    
-    os.environ['DYNAMODB_TABLE_NAME'] = 'test-logs-table'
-    yield table
-
+        ]
+        
+        for log in test_logs:
+            table.put_item(Item=log)
+        
+        yield table
 
 def test_read_recent_logs_success(dynamodb_table_with_data):
     """Test successful retrieval of recent logs"""
-    event = {
-        'queryStringParameters': None
-    }
-    
-    response = lambda_handler(event, None)
-    
-    assert response['statusCode'] == 200
-    body = json.loads(response['body'])
-    assert 'logs' in body
-    assert 'count' in body
-    assert body['count'] > 0
-
+    with mock_aws():
+        event = {
+            'queryStringParameters': None
+        }
+        
+        response = lambda_handler(event, None)
+        
+        assert response['statusCode'] == 200
+        
+        body = json.loads(response['body'])
+        assert 'logs' in body
+        assert 'count' in body
+        assert body['count'] == 3
+        assert len(body['logs']) == 3
 
 def test_read_recent_logs_with_service_filter(dynamodb_table_with_data):
     """Test retrieval with service name filter"""
-    event = {
-        'queryStringParameters': {
-            'service_name': 'test-service'
+    with mock_aws():
+        event = {
+            'queryStringParameters': {
+                'service_name': 'test-service'
+            }
         }
-    }
-    
-    response = lambda_handler(event, None)
-    
-    assert response['statusCode'] == 200
-    body = json.loads(response['body'])
-    assert body['count'] > 0
-    assert all(log['service_name'] == 'test-service' for log in body['logs'])
-
+        
+        response = lambda_handler(event, None)
+        
+        assert response['statusCode'] == 200
+        
+        body = json.loads(response['body'])
+        assert body['count'] == 2
+        for log in body['logs']:
+            assert log['service_name'] == 'test-service'
 
 def test_read_recent_logs_with_limit(dynamodb_table_with_data):
     """Test retrieval with limit parameter"""
-    event = {
-        'queryStringParameters': {
-            'limit': '5'
+    with mock_aws():
+        event = {
+            'queryStringParameters': {
+                'limit': '2'
+            }
         }
-    }
-    
-    response = lambda_handler(event, None)
-    
-    assert response['statusCode'] == 200
-    body = json.loads(response['body'])
-    assert body['count'] <= 5
-
+        
+        response = lambda_handler(event, None)
+        
+        assert response['statusCode'] == 200
+        
+        body = json.loads(response['body'])
+        assert len(body['logs']) <= 2
 
 def test_read_recent_logs_with_log_type(dynamodb_table_with_data):
     """Test retrieval with log type filter"""
-    event = {
-        'queryStringParameters': {
-            'log_type': 'application'
+    with mock_aws():
+        event = {
+            'queryStringParameters': {
+                'log_type': 'application'
+            }
         }
-    }
-    
-    response = lambda_handler(event, None)
-    
-    assert response['statusCode'] == 200
-    body = json.loads(response['body'])
-    assert all(log['log_type'] == 'application' for log in body['logs'])
-
+        
+        response = lambda_handler(event, None)
+        
+        assert response['statusCode'] == 200
+        
+        body = json.loads(response['body'])
+        assert body['count'] == 2
+        for log in body['logs']:
+            assert log['log_type'] == 'application'
 
 def test_read_recent_logs_no_results(dynamodb_table_with_data):
     """Test retrieval with no matching results"""
-    event = {
-        'queryStringParameters': {
-            'service_name': 'non-existent-service'
+    with mock_aws():
+        event = {
+            'queryStringParameters': {
+                'service_name': 'non-existent-service'
+            }
         }
-    }
-    
-    response = lambda_handler(event, None)
-    
-    assert response['statusCode'] == 200
-    body = json.loads(response['body'])
-    assert body['count'] == 0
-    assert body['logs'] == []
+        
+        response = lambda_handler(event, None)
+        
+        assert response['statusCode'] == 200
+        
+        body = json.loads(response['body'])
+        assert body['count'] == 0
+        assert len(body['logs']) == 0
 
