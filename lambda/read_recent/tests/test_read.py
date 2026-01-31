@@ -8,7 +8,7 @@ import os
 import pytest
 from moto import mock_aws
 import boto3
-from datetime import datetime
+from datetime import datetime, timezone
 import time
 
 # Import the Lambda handler - use sys.path to avoid 'lambda' keyword issue
@@ -28,58 +28,64 @@ def aws_credentials():
 
 
 @pytest.fixture
-def dynamodb_table_with_data(aws_credentials):
-    """Create mock DynamoDB table with test data"""
+def mock_aws_services(aws_credentials):
+    """Create mock AWS services context"""
     with mock_aws():
-        dynamodb = boto3.resource('dynamodb', region_name='eu-west-2')
-        
-        table = dynamodb.create_table(
-            TableName='test-logs-table',
-            KeySchema=[
-                {'AttributeName': 'service_name', 'KeyType': 'HASH'},
-                {'AttributeName': 'timestamp', 'KeyType': 'RANGE'}
-            ],
-            AttributeDefinitions=[
-                {'AttributeName': 'service_name', 'AttributeType': 'S'},
-                {'AttributeName': 'timestamp', 'AttributeType': 'N'},
-                {'AttributeName': 'log_type', 'AttributeType': 'S'}
-            ],
-            GlobalSecondaryIndexes=[
-                {
-                    'IndexName': 'TimestampIndex',
-                    'KeySchema': [
-                        {'AttributeName': 'log_type', 'KeyType': 'HASH'},
-                        {'AttributeName': 'timestamp', 'KeyType': 'RANGE'}
-                    ],
-                    'Projection': {'ProjectionType': 'ALL'},
-                    'ProvisionedThroughput': {
-                        'ReadCapacityUnits': 5,
-                        'WriteCapacityUnits': 5
-                    }
+        yield
+
+
+@pytest.fixture
+def dynamodb_table_with_data(mock_aws_services):
+    """Create mock DynamoDB table with test data"""
+    dynamodb = boto3.resource('dynamodb', region_name='eu-west-2')
+    
+    table = dynamodb.create_table(
+        TableName='test-logs-table',
+        KeySchema=[
+            {'AttributeName': 'service_name', 'KeyType': 'HASH'},
+            {'AttributeName': 'timestamp', 'KeyType': 'RANGE'}
+        ],
+        AttributeDefinitions=[
+            {'AttributeName': 'service_name', 'AttributeType': 'S'},
+            {'AttributeName': 'timestamp', 'AttributeType': 'N'},
+            {'AttributeName': 'log_type', 'AttributeType': 'S'}
+        ],
+        GlobalSecondaryIndexes=[
+            {
+                'IndexName': 'TimestampIndex',
+                'KeySchema': [
+                    {'AttributeName': 'log_type', 'KeyType': 'HASH'},
+                    {'AttributeName': 'timestamp', 'KeyType': 'RANGE'}
+                ],
+                'Projection': {'ProjectionType': 'ALL'},
+                'ProvisionedThroughput': {
+                    'ReadCapacityUnits': 5,
+                    'WriteCapacityUnits': 5
                 }
-            ],
-            ProvisionedThroughput={
-                'ReadCapacityUnits': 5,
-                'WriteCapacityUnits': 5
+            }
+        ],
+        ProvisionedThroughput={
+            'ReadCapacityUnits': 5,
+            'WriteCapacityUnits': 5
+        }
+    )
+    
+    # Add test data
+    current_time = int(time.time())
+    for i in range(10):
+        table.put_item(
+            Item={
+                'service_name': 'test-service',
+                'timestamp': current_time - i,
+                'log_id': f'test-log-{i}',
+                'log_type': 'application',
+                'level': 'INFO',
+                'message': f'Test log message {i}'
             }
         )
-        
-        # Add test data
-        current_time = int(time.time())
-        for i in range(10):
-            table.put_item(
-                Item={
-                    'service_name': 'test-service',
-                    'timestamp': current_time - i,
-                    'log_id': f'test-log-{i}',
-                    'log_type': 'application',
-                    'level': 'INFO',
-                    'message': f'Test log message {i}'
-                }
-            )
-        
-        os.environ['DYNAMODB_TABLE_NAME'] = 'test-logs-table'
-        yield table
+    
+    os.environ['DYNAMODB_TABLE_NAME'] = 'test-logs-table'
+    yield table
 
 
 def test_read_recent_logs_success(dynamodb_table_with_data):
