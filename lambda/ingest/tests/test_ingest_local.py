@@ -1,168 +1,133 @@
-
-import unittest
 import json
-import sys
+import pytest
 import os
-from unittest.mock import patch, MagicMock
+from moto import mock_dynamodb, mock_cloudwatch
+import boto3
+from decimal import Decimal
 
-# Add parent directory to path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Set environment variables before importing Lambda function
+os.environ['DYNAMODB_TABLE_NAME'] = 'LogsTable'
+os.environ['AWS_DEFAULT_REGION'] = 'eu-west-2'
 
+from lambda.ingest_log.index import lambda_handler
 
-class TestIngestLambdaLocal(unittest.TestCase):
-    """Local tests for Ingest Lambda without AWS connectivity"""
-    
-    def setUp(self):
-        """Set up test fixtures"""
-        # Clear cached module
-        if 'index' in sys.modules:
-            del sys.modules['index']
+@pytest.fixture
+def aws_credentials():
+    """Mock AWS credentials for moto testing"""
+    os.environ['AWS_ACCESS_KEY_ID'] = 'testing'
+    os.environ['AWS_SECRET_ACCESS_KEY'] = 'testing'
+    os.environ['AWS_SECURITY_TOKEN'] = 'testing'
+    os.environ['AWS_SESSION_TOKEN'] = 'testing'
+
+@pytest.fixture
+def dynamodb_table(aws_credentials):
+    """Create mock DynamoDB table for testing"""
+    with mock_dynamodb():
+        dynamodb = boto3.resource('dynamodb', region_name='eu-west-2')
         
-        # Set environment
-        os.environ['TABLE_NAME'] = 'log-entries'
-        os.environ['AWS_DEFAULT_REGION'] = 'eu-west-1'
-        
-    @patch('boto3.resource')
-    def test_valid_log_entry(self, mock_boto3):
-        """Test ingesting a valid log entry"""
-        # Setup mock
-        mock_table = MagicMock()
-        mock_dynamodb = MagicMock()
-        mock_dynamodb.Table.return_value = mock_table
-        mock_boto3.return_value = mock_dynamodb
-        
-        # Import after patching
-        import index
-        
-        event = {
-            'severity': 'info',
-            'message': 'Test log message'
-        }
-        
-        response = index.lambda_handler(event, None)
-        
-        self.assertEqual(response['statusCode'], 201)
-        body = json.loads(response['body'])
-        self.assertIn('log_entry', body)
-        self.assertEqual(body['log_entry']['severity'], 'info')
-        self.assertEqual(body['log_entry']['message'], 'Test log message')
-        self.assertIn('id', body['log_entry'])
-        self.assertIn('datetime', body['log_entry'])
-        
-        # Verify DynamoDB put_item was called
-        mock_table.put_item.assert_called_once()
-        
-    @patch('boto3.resource')
-    def test_missing_severity(self, mock_boto3):
-        """Test with missing severity field"""
-        mock_table = MagicMock()
-        mock_dynamodb = MagicMock()
-        mock_dynamodb.Table.return_value = mock_table
-        mock_boto3.return_value = mock_dynamodb
-        
-        import index
-        
-        event = {
-            'message': 'Test log message'
-        }
-        
-        response = index.lambda_handler(event, None)
-        
-        self.assertEqual(response['statusCode'], 400)
-        body = json.loads(response['body'])
-        self.assertIn('error', body)
-        
-    @patch('boto3.resource')
-    def test_missing_message(self, mock_boto3):
-        """Test with missing message field"""
-        mock_table = MagicMock()
-        mock_dynamodb = MagicMock()
-        mock_dynamodb.Table.return_value = mock_table
-        mock_boto3.return_value = mock_dynamodb
-        
-        import index
-        
-        event = {
-            'severity': 'info'
-        }
-        
-        response = index.lambda_handler(event, None)
-        
-        self.assertEqual(response['statusCode'], 400)
-        body = json.loads(response['body'])
-        self.assertIn('error', body)
-        
-    @patch('boto3.resource')
-    def test_invalid_severity(self, mock_boto3):
-        """Test with invalid severity value"""
-        mock_table = MagicMock()
-        mock_dynamodb = MagicMock()
-        mock_dynamodb.Table.return_value = mock_table
-        mock_boto3.return_value = mock_dynamodb
-        
-        import index
-        
-        event = {
-            'severity': 'critical',
-            'message': 'Test log message'
-        }
-        
-        response = index.lambda_handler(event, None)
-        
-        self.assertEqual(response['statusCode'], 400)
-        body = json.loads(response['body'])
-        self.assertIn('error', body)
-        self.assertIn('Invalid severity', body['error'])
-        
-    @patch('boto3.resource')
-    def test_all_severity_levels(self, mock_boto3):
-        """Test all valid severity levels"""
-        mock_table = MagicMock()
-        mock_dynamodb = MagicMock()
-        mock_dynamodb.Table.return_value = mock_table
-        mock_boto3.return_value = mock_dynamodb
-        
-        import index
-        
-        severities = ['info', 'warning', 'error']
-        
-        for severity in severities:
-            mock_table.reset_mock()
-            
-            event = {
-                'severity': severity,
-                'message': f'Test {severity} message'
+        # Create table with same schema as production
+        table = dynamodb.create_table(
+            TableName='LogsTable',
+            KeySchema=[
+                {'AttributeName': 'service_name', 'KeyType': 'HASH'},
+                {'AttributeName': 'timestamp', 'KeyType': 'RANGE'}
+            ],
+            AttributeDefinitions=[
+                {'AttributeName': 'service_name', 'AttributeType': 'S'},
+                {'AttributeName': 'timestamp', 'AttributeType': 'N'},
+                {'AttributeName': 'log_type', 'AttributeType': 'S'}
+            ],
+            GlobalSecondaryIndexes=[
+                {
+                    'IndexName': 'TimestampIndex',
+                    'KeySchema': [
+                        {'AttributeName': 'log_type', 'KeyType': 'HASH'},
+                        {'AttributeName': 'timestamp', 'KeyType': 'RANGE'}
+                    ],
+                    'Projection': {'ProjectionType': 'ALL'},
+                    'ProvisionedThroughput': {
+                        'ReadCapacityUnits': 5,
+                        'WriteCapacityUnits': 5
+                    }
+                }
+            ],
+            BillingMode='PROVISIONED',
+            ProvisionedThroughput={
+                'ReadCapacityUnits': 5,
+                'WriteCapacityUnits': 5
             }
-            
-            response = index.lambda_handler(event, None)
-            
-            self.assertEqual(response['statusCode'], 201, f"Failed for severity: {severity}")
-            body = json.loads(response['body'])
-            self.assertEqual(body['log_entry']['severity'], severity)
-            
-    @patch('boto3.resource')
-    def test_dynamodb_error(self, mock_boto3):
-        """Test DynamoDB error handling"""
-        mock_table = MagicMock()
-        mock_table.put_item.side_effect = Exception('DynamoDB error')
-        mock_dynamodb = MagicMock()
-        mock_dynamodb.Table.return_value = mock_table
-        mock_boto3.return_value = mock_dynamodb
+        )
         
-        import index
-        
-        event = {
-            'severity': 'info',
-            'message': 'Test log message'
-        }
-        
-        response = index.lambda_handler(event, None)
-        
-        self.assertEqual(response['statusCode'], 500)
-        body = json.loads(response['body'])
-        self.assertIn('error', body)
+        yield table
 
+@mock_cloudwatch
+def test_successful_log_ingestion(dynamodb_table):
+    """Test successful log ingestion with all required fields"""
+    event = {
+        'body': json.dumps({
+            'service_name': 'test-service',
+            'log_type': 'application',
+            'level': 'INFO',
+            'message': 'Test log message',
+            'metadata': {'key': 'value'}
+        })
+    }
+    
+    response = lambda_handler(event, None)
+    
+    # Verify successful response
+    assert response['statusCode'] == 201
+    body = json.loads(response['body'])
+    assert 'log_id' in body
+    assert body['message'] == 'Log ingested successfully'
 
-if __name__ == '__main__':
-    unittest.main()
+@mock_cloudwatch
+def test_missing_required_field(dynamodb_table):
+    """Test error handling when required field is missing"""
+    event = {
+        'body': json.dumps({
+            'service_name': 'test-service',
+            'message': 'Test message'
+            # Missing log_type
+        })
+    }
+    
+    response = lambda_handler(event, None)
+    
+    # Verify error response
+    assert response['statusCode'] == 400
+    body = json.loads(response['body'])
+    assert 'error' in body
 
+@mock_cloudwatch
+def test_invalid_json(dynamodb_table):
+    """Test error handling for invalid JSON input"""
+    event = {
+        'body': 'invalid json{'
+    }
+    
+    response = lambda_handler(event, None)
+    
+    # Verify error response
+    assert response['statusCode'] == 400
+    body = json.loads(response['body'])
+    assert 'error' in body
+
+@mock_cloudwatch
+def test_default_log_level(dynamodb_table):
+    """Test that log level defaults to INFO when not provided"""
+    event = {
+        'body': json.dumps({
+            'service_name': 'test-service',
+            'log_type': 'application',
+            'message': 'Test message'
+            # No level specified
+        })
+    }
+    
+    response = lambda_handler(event, None)
+    
+    # Verify successful response
+    assert response['statusCode'] == 201
+
+``
