@@ -1,154 +1,117 @@
-# Lambda function configuration for log ingestion and retrieval
+```hcl
 
-# Data source for Lambda deployment package (ingest)
+# Lambda function for ingesting logs
 data "archive_file" "ingest_log" {
   type        = "zip"
-  source_dir  = "${path.module}/../lambda/ingest_log"
-  output_path = "${path.module}/ingest_log.zip"
-  
-  excludes = [
-    "tests",
-    "__pycache__",
-    "*.pyc",
-    ".pytest_cache"
-  ]
+  source_dir  = "${path.module}/../lambda/ingest"
+  output_path = "${path.module}/ingest_lambda.zip"
 }
 
-# Data source for Lambda deployment package (read)
-data "archive_file" "read_recent" {
-  type        = "zip"
-  source_dir  = "${path.module}/../lambda/read_recent"
-  output_path = "${path.module}/read_recent.zip"
-  
-  excludes = [
-    "tests",
-    "__pycache__",
-    "*.pyc",
-    ".pytest_cache"
-  ]
-}
-
-# Lambda function for log ingestion
 resource "aws_lambda_function" "ingest_log" {
   filename         = data.archive_file.ingest_log.output_path
-  function_name    = "${local.name_prefix}-ingest-log"
-  role            = aws_iam_role.lambda_execution.arn
+  function_name    = "${var.project_name}-ingest-${var.environment}"
+  role            = aws_iam_role.lambda_role.arn
   handler         = "index.lambda_handler"
   source_code_hash = data.archive_file.ingest_log.output_base64sha256
-  runtime         = "python3.11"
-  timeout         = var.lambda_timeout
-  memory_size     = var.lambda_memory_size
-  
-  # Environment variables
+  runtime         = "python3.12"
+  timeout         = 30
+  memory_size     = 256
+
   environment {
     variables = {
       DYNAMODB_TABLE_NAME = aws_dynamodb_table.logs.name
-      LOG_LEVEL          = "INFO"
-      ENVIRONMENT        = var.environment
     }
   }
-  
-  # Enable encryption for environment variables
-  kms_key_arn = aws_kms_key.logs.arn
-  
-  # Tracing configuration
+
+  kms_key_arn = aws_kms_key.lambda.arn
+
   tracing_config {
     mode = "Active"
   }
-  
-  # Reserved concurrent executions (optional)
-  reserved_concurrent_executions = -1  # No limit
-  
+
   tags = {
-    Name        = "${local.name_prefix}-ingest-log"
-    Description = "Lambda function for log ingestion"
+    Name        = "${var.project_name}-ingest-${var.environment}"
+    Environment = var.environment
+    Project     = var.project_name
   }
-  
-  depends_on = [
-    aws_cloudwatch_log_group.ingest_log,
-    aws_iam_role_policy_attachment.lambda_execution
-  ]
 }
 
 # Lambda function for reading recent logs
+data "archive_file" "read_recent" {
+  type        = "zip"
+  source_dir  = "${path.module}/../lambda/read_recent"
+  output_path = "${path.module}/read_recent_lambda.zip"
+}
+
 resource "aws_lambda_function" "read_recent" {
   filename         = data.archive_file.read_recent.output_path
-  function_name    = "${local.name_prefix}-read-recent"
-  role            = aws_iam_role.lambda_execution.arn
+  function_name    = "${var.project_name}-read-recent-${var.environment}"
+  role            = aws_iam_role.lambda_role.arn
   handler         = "index.lambda_handler"
   source_code_hash = data.archive_file.read_recent.output_base64sha256
-  runtime         = "python3.11"
-  timeout         = var.lambda_timeout
-  memory_size     = var.lambda_memory_size
-  
-  # Environment variables
+  runtime         = "python3.12"
+  timeout         = 30
+  memory_size     = 256
+
   environment {
     variables = {
       DYNAMODB_TABLE_NAME = aws_dynamodb_table.logs.name
-      LOG_LEVEL          = "INFO"
-      ENVIRONMENT        = var.environment
     }
   }
-  
-  # Enable encryption for environment variables
-  kms_key_arn = aws_kms_key.logs.arn
-  
-  # Tracing configuration
+
+  kms_key_arn = aws_kms_key.lambda.arn
+
   tracing_config {
     mode = "Active"
   }
-  
-  # Reserved concurrent executions (optional)
-  reserved_concurrent_executions = -1  # No limit
-  
+
   tags = {
-    Name        = "${local.name_prefix}-read-recent"
-    Description = "Lambda function for reading recent logs"
+    Name        = "${var.project_name}-read-recent-${var.environment}"
+    Environment = var.environment
+    Project     = var.project_name
   }
-  
-  depends_on = [
-    aws_cloudwatch_log_group.read_recent,
-    aws_iam_role_policy_attachment.lambda_execution
-  ]
 }
 
-# CloudWatch Log Group for ingest Lambda
+# CloudWatch Log Groups for Lambda functions
 resource "aws_cloudwatch_log_group" "ingest_log" {
-  name              = "/aws/lambda/${local.name_prefix}-ingest-log"
-  retention_in_days = var.log_retention_days
-  kms_key_id        = aws_kms_key.logs.arn
-  
+  name              = "/aws/lambda/${aws_lambda_function.ingest_log.function_name}"
+  retention_in_days = 7
+  kms_key_id        = aws_kms_key.cloudwatch.arn
+
   tags = {
-    Name = "${local.name_prefix}-ingest-log-logs"
+    Name        = "${var.project_name}-ingest-logs-${var.environment}"
+    Environment = var.environment
+    Project     = var.project_name
   }
 }
 
-# CloudWatch Log Group for read Lambda
 resource "aws_cloudwatch_log_group" "read_recent" {
-  name              = "/aws/lambda/${local.name_prefix}-read-recent"
-  retention_in_days = var.log_retention_days
-  kms_key_id        = aws_kms_key.logs.arn
-  
+  name              = "/aws/lambda/${aws_lambda_function.read_recent.function_name}"
+  retention_in_days = 7
+  kms_key_id        = aws_kms_key.cloudwatch.arn
+
   tags = {
-    Name = "${local.name_prefix}-read-recent-logs"
+    Name        = "${var.project_name}-read-recent-logs-${var.environment}"
+    Environment = var.environment
+    Project     = var.project_name
   }
 }
 
-# Lambda permission for API Gateway (ingest)
-resource "aws_lambda_permission" "api_gateway_ingest" {
+# Lambda permissions for API Gateway
+resource "aws_lambda_permission" "ingest_api_gateway" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.ingest_log.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+  source_arn    = "${aws_api_gateway_rest_api.log_service.execution_arn}/*/*"
 }
 
-# Lambda permission for API Gateway (read)
-resource "aws_lambda_permission" "api_gateway_read" {
+resource "aws_lambda_permission" "read_recent_api_gateway" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.read_recent.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+  source_arn    = "${aws_api_gateway_rest_api.log_service.execution_arn}/*/*"
 }
 
+```
