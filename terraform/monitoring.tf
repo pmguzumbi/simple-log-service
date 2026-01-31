@@ -155,57 +155,46 @@ resource "aws_cloudwatch_metric_alarm" "api_5xx_errors" {
 resource "aws_cloudwatch_dashboard" "main" {
   dashboard_name = "${local.name_prefix}-dashboard"
   
-  dashboard_body = jsonencode({
+    dashboard_body = jsonencode({
     widgets = [
       {
         type = "metric"
         properties = {
           metrics = [
-            ["AWS/Lambda", "Invocations", { stat = "Sum", label = "Ingest Invocations" }, { FunctionName = aws_lambda_function.ingest_log.function_name }],
-            [".", ".", { stat = "Sum", label = "Read Invocations" }, { FunctionName = aws_lambda_function.read_recent.function_name }]
-          ]
-          period = 300
-          stat   = "Sum"
-          region = var.aws_region
-          title  = "Lambda Invocations"
-        }
-      },
-      {
-        type = "metric"
-        properties = {
-          metrics = [
-            ["AWS/Lambda", "Errors", { stat = "Sum", label = "Ingest Errors" }, { FunctionName = aws_lambda_function.ingest_log.function_name }],
-            [".", ".", { stat = "Sum", label = "Read Errors" }, { FunctionName = aws_lambda_function.read_recent.function_name }]
-          ]
-          period = 300
-          stat   = "Sum"
-          region = var.aws_region
-          title  = "Lambda Errors"
-        }
-      },
-      {
-        type = "metric"
-        properties = {
-          metrics = [
-            ["AWS/Lambda", "Duration", { stat = "Average", label = "Ingest Duration" }, { FunctionName = aws_lambda_function.ingest_log.function_name }],
-            [".", ".", { stat = "Average", label = "Read Duration" }, { FunctionName = aws_lambda_function.read_recent.function_name }]
+            ["AWS/Lambda", "Invocations", "FunctionName", aws_lambda_function.ingest_log.function_name, { stat = "Sum" }],
+            ["AWS/Lambda", "Errors", "FunctionName", aws_lambda_function.ingest_log.function_name, { stat = "Sum" }],
+            ["AWS/Lambda", "Duration", "FunctionName", aws_lambda_function.ingest_log.function_name, { stat = "Average" }]
           ]
           period = 300
           stat   = "Average"
-          region = var.aws_region
-          title  = "Lambda Duration (ms)"
+          region = data.aws_region.current.name
+          title  = "Ingest Lambda Metrics"
         }
       },
       {
         type = "metric"
         properties = {
           metrics = [
-            ["AWS/DynamoDB", "ConsumedReadCapacityUnits", { stat = "Sum" }, { TableName = aws_dynamodb_table.logs.name }],
-            [".", "ConsumedWriteCapacityUnits", { stat = "Sum" }, { TableName = aws_dynamodb_table.logs.name }]
+            ["AWS/Lambda", "Invocations", "FunctionName", aws_lambda_function.read_recent.function_name, { stat = "Sum" }],
+            ["AWS/Lambda", "Errors", "FunctionName", aws_lambda_function.read_recent.function_name, { stat = "Sum" }],
+            ["AWS/Lambda", "Duration", "FunctionName", aws_lambda_function.read_recent.function_name, { stat = "Average" }]
           ]
           period = 300
-          stat   = "Sum"
-          region = var.aws_region
+          stat   = "Average"
+          region = data.aws_region.current.name
+          title  = "Read Recent Lambda Metrics"
+        }
+      },
+      {
+        type = "metric"
+        properties = {
+          metrics = [
+            ["AWS/DynamoDB", "ConsumedReadCapacityUnits", "TableName", aws_dynamodb_table.logs.name, { stat = "Sum" }],
+            ["AWS/DynamoDB", "ConsumedWriteCapacityUnits", "TableName", aws_dynamodb_table.logs.name, { stat = "Sum" }]
+          ]
+          period = 300
+          stat   = "Average"
+          region = data.aws_region.current.name
           title  = "DynamoDB Capacity"
         }
       },
@@ -213,16 +202,18 @@ resource "aws_cloudwatch_dashboard" "main" {
         type = "metric"
         properties = {
           metrics = [
-            ["AWS/ApiGateway", "Count", { stat = "Sum" }, { ApiName = aws_api_gateway_rest_api.main.name }],
-            [".", "4XXError", { stat = "Sum" }, { ApiName = aws_api_gateway_rest_api.main.name }],
-            [".", "5XXError", { stat = "Sum" }, { ApiName = aws_api_gateway_rest_api.main.name }]
+            ["AWS/ApiGateway", "Count", "ApiName", aws_api_gateway_rest_api.log_service.name, { stat = "Sum" }],
+            ["AWS/ApiGateway", "4XXError", "ApiName", aws_api_gateway_rest_api.log_service.name, { stat = "Sum" }],
+            ["AWS/ApiGateway", "5XXError", "ApiName", aws_api_gateway_rest_api.log_service.name, { stat = "Sum" }]
           ]
           period = 300
           stat   = "Sum"
-          region = var.aws_region
+          region = data.aws_region.current.name
           title  = "API Gateway Metrics"
         }
-      },
+      }
+    ]
+  }
       {
         type = "metric"
         properties = {
