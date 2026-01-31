@@ -1,5 +1,3 @@
-```terraform
-
 # Main Terraform configuration for Simple Log Service
 
 terraform {
@@ -78,5 +76,3 @@ locals {
     ManagedBy   = "Terraform"
   }
 }
-
-```
