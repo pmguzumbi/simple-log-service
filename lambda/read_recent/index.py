@@ -10,10 +10,8 @@ from datetime import datetime, timedelta
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
 
-# Initialize DynamoDB resource
+# Initialize DynamoDB resource (but don't get table yet)
 dynamodb = boto3.resource('dynamodb')
-table_name = os.environ['DYNAMODB_TABLE_NAME']
-table = dynamodb.Table(table_name)
 
 # Initialize CloudWatch client for custom metrics
 cloudwatch = boto3.client('cloudwatch')
@@ -31,6 +29,13 @@ def lambda_handler(event, context):
         dict: API Gateway response with logs and count
     """
     try:
+        # Get table name from environment variable (lazy load)
+        table_name = os.environ.get('DYNAMODB_TABLE_NAME')
+        if not table_name:
+            return create_response(500, {'error': 'DYNAMODB_TABLE_NAME not configured'})
+        
+        table = dynamodb.Table(table_name)
+        
         # Parse query parameters
         params = event.get('queryStringParameters') or {}
         service_name = params.get('service_name')
@@ -43,13 +48,13 @@ def lambda_handler(event, context):
         # Query logs based on parameters
         if service_name:
             # Query by service name (partition key)
-            logs = query_by_service(service_name, cutoff_time, limit)
+            logs = query_by_service(table, service_name, cutoff_time, limit)
         elif log_type:
             # Query by log type using GSI
-            logs = query_by_log_type(log_type, cutoff_time, limit)
+            logs = query_by_log_type(table, log_type, cutoff_time, limit)
         else:
             # Scan all recent logs
-            logs = scan_recent_logs(cutoff_time, limit)
+            logs = scan_recent_logs(table, cutoff_time, limit)
         
         # Publish custom metric
         publish_metric('LogsRetrieved', len(logs), service_name or 'all')
@@ -69,11 +74,12 @@ def lambda_handler(event, context):
         return create_response(500, {'error': 'Internal server error'})
 
 
-def query_by_service(service_name, cutoff_time, limit):
+def query_by_service(table, service_name, cutoff_time, limit):
     """
     Query logs by service name (most efficient)
     
     Args:
+        table: DynamoDB table resource
         service_name: Service name to filter by
         cutoff_time: Minimum timestamp
         limit: Maximum number of results
@@ -90,11 +96,12 @@ def query_by_service(service_name, cutoff_time, limit):
     return response.get('Items', [])
 
 
-def query_by_log_type(log_type, cutoff_time, limit):
+def query_by_log_type(table, log_type, cutoff_time, limit):
     """
     Query logs by log type using GSI
     
     Args:
+        table: DynamoDB table resource
         log_type: Log type to filter by
         cutoff_time: Minimum timestamp
         limit: Maximum number of results
@@ -112,11 +119,12 @@ def query_by_log_type(log_type, cutoff_time, limit):
     return response.get('Items', [])
 
 
-def scan_recent_logs(cutoff_time, limit):
+def scan_recent_logs(table, cutoff_time, limit):
     """
     Scan all recent logs (least efficient, use sparingly)
     
     Args:
+        table: DynamoDB table resource
         cutoff_time: Minimum timestamp
         limit: Maximum number of results
         
