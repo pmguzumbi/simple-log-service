@@ -6,7 +6,7 @@ Supports filtering by service name, log type, and time range
 
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
 
@@ -42,8 +42,8 @@ def lambda_handler(event, context):
         log_type = params.get('log_type')
         limit = int(params.get('limit', 100))
         
-        # Calculate cutoff timestamp (24 hours ago)
-        cutoff_time = int((datetime.utcnow() - timedelta(hours=24)).timestamp())
+        # Calculate cutoff timestamp (24 hours ago, timezone-aware)
+        cutoff_time = int((datetime.now(timezone.utc) - timedelta(hours=24)).timestamp())
         
         # Query logs based on parameters
         if service_name:
