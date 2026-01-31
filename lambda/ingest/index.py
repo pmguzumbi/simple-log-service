@@ -1,133 +1,136 @@
+
+"""
+Lambda function for ingesting log entries into DynamoDB
+Validates input, generates unique IDs, and stores logs with timestamp
+"""
+
 import json
-import boto3
 import os
 import uuid
 from datetime import datetime
+import boto3
 from decimal import Decimal
 
-# Initialize DynamoDB client
+# Initialize DynamoDB resource
 dynamodb = boto3.resource('dynamodb')
-table_name = os.environ.get('DYNAMODB_TABLE_NAME', 'LogsTable')
+table_name = os.environ['DYNAMODB_TABLE_NAME']
 table = dynamodb.Table(table_name)
 
 # Initialize CloudWatch client for custom metrics
 cloudwatch = boto3.client('cloudwatch')
 
+
 def lambda_handler(event, context):
     """
-    Lambda function to ingest log entries into DynamoDB.
-    
-    Expected input format:
-    {
-        "service_name": "api-service",
-        "log_type": "application",
-        "level": "INFO",
-        "message": "Log message",
-        "metadata": {}
-    }
+    Main Lambda handler for log ingestion
     
     Args:
-        event: API Gateway event containing log data
+        event: API Gateway event containing log data in body
         context: Lambda context object
         
     Returns:
-        API Gateway response with status code and body
+        dict: API Gateway response with status code and body
     """
     try:
-        # Parse request body - handle both string and dict formats
-        if isinstance(event.get('body'), str):
-            body = json.loads(event['body'])
-        else:
-            body = event.get('body', event)
+        # Parse request body
+        if 'body' not in event:
+            return create_response(400, {'error': 'Missing request body'})
+        
+        body = json.loads(event['body'])
         
         # Validate required fields
-        required_fields = ['service_name', 'log_type', 'message']
+        required_fields = ['service_name', 'log_type', 'level', 'message']
         for field in required_fields:
             if field not in body:
-                return {
-                    'statusCode': 400,
-                    'body': json.dumps({
-                        'error': f'Missing required field: {field}'
-                    })
-                }
+                return create_response(400, {'error': f'Missing required field: {field}'})
         
-        # Generate log entry with unique ID and timestamp
+        # Generate unique log ID and timestamp
+        log_id = str(uuid.uuid4())
+        timestamp = int(datetime.utcnow().timestamp())
+        
+        # Prepare log entry
         log_entry = {
-            'log_id': str(uuid.uuid4()),
             'service_name': body['service_name'],
+            'timestamp': timestamp,
+            'log_id': log_id,
             'log_type': body['log_type'],
-            'timestamp': Decimal(str(datetime.utcnow().timestamp())),
-            'level': body.get('level', 'INFO'),  # Default to INFO if not provided
-            'message': body['message'],
-            'metadata': body.get('metadata', {})  # Optional metadata
+            'level': body['level'],
+            'message': body['message']
         }
+        
+        # Add optional metadata if provided
+        if 'metadata' in body:
+            log_entry['metadata'] = body['metadata']
         
         # Write to DynamoDB
         table.put_item(Item=log_entry)
         
-        # Publish custom metric to CloudWatch for monitoring
+        # Publish custom metric to CloudWatch
+        publish_metric('LogsIngested', 1, body['service_name'])
+        
+        # Return success response
+        return create_response(201, {
+            'message': 'Log entry created successfully',
+            'log_id': log_id,
+            'timestamp': timestamp
+        })
+        
+    except json.JSONDecodeError:
+        return create_response(400, {'error': 'Invalid JSON in request body'})
+    
+    except Exception as e:
+        print(f"Error ingesting log: {str(e)}")
+        publish_metric('LogIngestionErrors', 1, 'unknown')
+        return create_response(500, {'error': 'Internal server error'})
+
+
+def create_response(status_code, body):
+    """
+    Create standardized API Gateway response
+    
+    Args:
+        status_code: HTTP status code
+        body: Response body dictionary
+        
+    Returns:
+        dict: Formatted API Gateway response
+    """
+    return {
+        'statusCode': status_code,
+        'headers': {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+        },
+        'body': json.dumps(body)
+    }
+
+
+def publish_metric(metric_name, value, service_name):
+    """
+    Publish custom metric to CloudWatch
+    
+    Args:
+        metric_name: Name of the metric
+        value: Metric value
+        service_name: Service name for dimension
+    """
+    try:
         cloudwatch.put_metric_data(
             Namespace='SimpleLogService',
             MetricData=[
                 {
-                    'MetricName': 'LogsIngested',
-                    'Value': 1,
+                    'MetricName': metric_name,
+                    'Value': value,
                     'Unit': 'Count',
                     'Dimensions': [
-                        {'Name': 'ServiceName', 'Value': body['service_name']},
-                        {'Name': 'LogType', 'Value': body['log_type']},
-                        {'Name': 'Level', 'Value': log_entry['level']}
+                        {
+                            'Name': 'ServiceName',
+                            'Value': service_name
+                        }
                     ]
                 }
             ]
         )
-        
-        # Return success response
-        return {
-            'statusCode': 201,
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            },
-            'body': json.dumps({
-                'message': 'Log ingested successfully',
-                'log_id': log_entry['log_id']
-            })
-        }
-        
-    except json.JSONDecodeError as e:
-        # Handle JSON parsing errors
-        print(f"JSON decode error: {str(e)}")
-        return {
-            'statusCode': 400,
-            'body': json.dumps({'error': 'Invalid JSON format'})
-        }
-    
     except Exception as e:
-        # Handle all other errors
-        print(f"Error ingesting log: {str(e)}")
-        
-        # Publish error metric for monitoring
-        try:
-            cloudwatch.put_metric_data(
-                Namespace='SimpleLogService',
-                MetricData=[
-                    {
-                        'MetricName': 'IngestionErrors',
-                        'Value': 1,
-                        'Unit': 'Count'
-                    }
-                ]
-            )
-        except:
-            pass  # Don't fail if metric publishing fails
-        
-        return {
-            'statusCode': 500,
-            'body': json.dumps({
-                'error': 'Internal server error',
-                'details': str(e)
-            })
-        }
+        print(f"Error publishing metric: {str(e)}")
 
-``
