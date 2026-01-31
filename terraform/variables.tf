@@ -37,3 +37,44 @@ variable "alarm_email" {
   type        = string
   default     = ""
 }
+variable "allowed_ingest_principals" {
+  description = "List of AWS principals (ARNs) allowed to assume the log ingest role"
+  type        = list(string)
+  default     = []
+  # Example: ["arn:aws:iam::123456789012:root", "arn:aws:iam::123456789012:role/MyAppRole"]
+}
+
+variable "allowed_read_principals" {
+  description = "List of AWS principals (ARNs) allowed to assume the log read role"
+  type        = list(string)
+  default     = []
+  # Example: ["arn:aws:iam::123456789012:root", "arn:aws:iam::123456789012:role/MyAppRole"]
+}
+
+variable "allowed_full_access_principals" {
+  description = "List of AWS principals (ARNs) allowed to assume the full access role"
+  type        = list(string)
+  default     = []
+  # Example: ["arn:aws:iam::123456789012:root"]
+}
+
+variable "external_id_ingest" {
+  description = "External ID for log ingest role assumption (security best practice)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "external_id_read" {
+  description = "External ID for log read role assumption (security best practice)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "external_id_full_access" {
+  description = "External ID for full access role assumption (security best practice)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
