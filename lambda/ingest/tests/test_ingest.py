@@ -6,7 +6,7 @@ Unit tests for ingest Lambda function
 import json
 import os
 import pytest
-from moto import mock_dynamodb
+from moto import mock_aws
 import boto3
 from datetime import datetime
 
@@ -29,7 +29,7 @@ def aws_credentials():
 @pytest.fixture
 def dynamodb_table(aws_credentials):
     """Create mock DynamoDB table"""
-    with mock_dynamodb():
+    with mock_aws():
         dynamodb = boto3.resource('dynamodb', region_name='eu-west-2')
         
         table = dynamodb.create_table(
