@@ -15,3 +15,9 @@ variable "aws_region" {
   type        = string
   default     = "us-east-1"
 }
+
+variable "enable_config" {
+  description = "Enable AWS Config for compliance monitoring"
+  type        = bool
+  default     = true
+}
