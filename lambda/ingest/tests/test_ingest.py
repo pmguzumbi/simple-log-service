@@ -1,14 +1,23 @@
 
 import json
 import os
+import sys
 import pytest
 from moto import mock_aws
 import boto3
 
+# Add the parent directory to the path to allow imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 # Set environment variable before importing the handler
 os.environ['DYNAMODB_TABLE_NAME'] = 'test-logs-table'
 
-from lambda.ingest.index import lambda_handler
+# Import the handler using importlib to avoid 'lambda' keyword issue
+import importlib.util
+spec = importlib.util.spec_from_file_location("ingest_handler", os.path.join(os.path.dirname(__file__), '..', 'index.py'))
+ingest_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(ingest_module)
+lambda_handler = ingest_module.lambda_handler
 
 @pytest.fixture
 def aws_credentials():
