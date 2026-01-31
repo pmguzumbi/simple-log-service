@@ -21,3 +21,19 @@ variable "enable_config" {
   type        = bool
   default     = true
 }
+
+variable "config_snapshot_frequency" {
+  description = "AWS Config snapshot delivery frequency"
+  type        = string
+  default     = "TwentyFour_Hours"
+  validation {
+    condition     = contains(["One_Hour", "Three_Hours", "Six_Hours", "Twelve_Hours", "TwentyFour_Hours"], var.config_snapshot_frequency)
+    error_message = "Must be a valid AWS Config delivery frequency."
+  }
+}
+
+variable "alarm_email" {
+  description = "Email address for alarm notifications (leave empty to disable email notifications)"
+  type        = string
+  default     = ""
+}
