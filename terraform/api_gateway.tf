@@ -1,3 +1,5 @@
+```terraform
+
 # API Gateway REST API
 resource "aws_api_gateway_rest_api" "log_service" {
   name        = "${var.project_name}-api-${var.environment}"
@@ -28,12 +30,12 @@ resource "aws_api_gateway_resource" "logs_recent" {
   path_part   = "recent"
 }
 
-# POST /logs method (ingest)
+# POST /logs method with IAM authorization
 resource "aws_api_gateway_method" "post_logs" {
   rest_api_id   = aws_api_gateway_rest_api.log_service.id
   resource_id   = aws_api_gateway_resource.logs.id
   http_method   = "POST"
-  authorization = "NONE"
+  authorization = "AWS_IAM"
 }
 
 resource "aws_api_gateway_integration" "post_logs" {
@@ -45,12 +47,12 @@ resource "aws_api_gateway_integration" "post_logs" {
   uri                     = aws_lambda_function.ingest_log.invoke_arn
 }
 
-# GET /logs/recent method (read)
+# GET /logs/recent method with IAM authorization
 resource "aws_api_gateway_method" "get_logs_recent" {
   rest_api_id   = aws_api_gateway_rest_api.log_service.id
   resource_id   = aws_api_gateway_resource.logs_recent.id
   http_method   = "GET"
-  authorization = "NONE"
+  authorization = "AWS_IAM"
 }
 
 resource "aws_api_gateway_integration" "get_logs_recent" {
@@ -138,3 +140,21 @@ resource "aws_iam_role_policy_attachment" "api_gateway_cloudwatch" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
 }
 
+# Lambda permissions for API Gateway
+resource "aws_lambda_permission" "ingest_api_gateway" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.ingest_log.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.log_service.execution_arn}/*/*"
+}
+
+resource "aws_lambda_permission" "read_recent_api_gateway" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.read_recent.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.log_service.execution_arn}/*/*"
+}
+
+```
