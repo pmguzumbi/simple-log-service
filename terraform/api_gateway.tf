@@ -1,5 +1,3 @@
-```terraform
-
 # API Gateway REST API
 resource "aws_api_gateway_rest_api" "log_service" {
   name        = "${var.project_name}-api-${var.environment}"
@@ -156,5 +154,3 @@ resource "aws_lambda_permission" "read_recent_api_gateway" {
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.log_service.execution_arn}/*/*"
 }
-
-```
