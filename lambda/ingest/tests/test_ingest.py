@@ -8,7 +8,7 @@ import os
 import pytest
 from moto import mock_aws
 import boto3
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Import the Lambda handler - use sys.path to avoid 'lambda' keyword issue
 import sys
@@ -27,44 +27,50 @@ def aws_credentials():
 
 
 @pytest.fixture
-def dynamodb_table(aws_credentials):
-    """Create mock DynamoDB table"""
+def mock_aws_services(aws_credentials):
+    """Create mock AWS services context"""
     with mock_aws():
-        dynamodb = boto3.resource('dynamodb', region_name='eu-west-2')
-        
-        table = dynamodb.create_table(
-            TableName='test-logs-table',
-            KeySchema=[
-                {'AttributeName': 'service_name', 'KeyType': 'HASH'},
-                {'AttributeName': 'timestamp', 'KeyType': 'RANGE'}
-            ],
-            AttributeDefinitions=[
-                {'AttributeName': 'service_name', 'AttributeType': 'S'},
-                {'AttributeName': 'timestamp', 'AttributeType': 'N'},
-                {'AttributeName': 'log_type', 'AttributeType': 'S'}
-            ],
-            GlobalSecondaryIndexes=[
-                {
-                    'IndexName': 'TimestampIndex',
-                    'KeySchema': [
-                        {'AttributeName': 'log_type', 'KeyType': 'HASH'},
-                        {'AttributeName': 'timestamp', 'KeyType': 'RANGE'}
-                    ],
-                    'Projection': {'ProjectionType': 'ALL'},
-                    'ProvisionedThroughput': {
-                        'ReadCapacityUnits': 5,
-                        'WriteCapacityUnits': 5
-                    }
+        yield
+
+
+@pytest.fixture
+def dynamodb_table(mock_aws_services):
+    """Create mock DynamoDB table"""
+    dynamodb = boto3.resource('dynamodb', region_name='eu-west-2')
+    
+    table = dynamodb.create_table(
+        TableName='test-logs-table',
+        KeySchema=[
+            {'AttributeName': 'service_name', 'KeyType': 'HASH'},
+            {'AttributeName': 'timestamp', 'KeyType': 'RANGE'}
+        ],
+        AttributeDefinitions=[
+            {'AttributeName': 'service_name', 'AttributeType': 'S'},
+            {'AttributeName': 'timestamp', 'AttributeType': 'N'},
+            {'AttributeName': 'log_type', 'AttributeType': 'S'}
+        ],
+        GlobalSecondaryIndexes=[
+            {
+                'IndexName': 'TimestampIndex',
+                'KeySchema': [
+                    {'AttributeName': 'log_type', 'KeyType': 'HASH'},
+                    {'AttributeName': 'timestamp', 'KeyType': 'RANGE'}
+                ],
+                'Projection': {'ProjectionType': 'ALL'},
+                'ProvisionedThroughput': {
+                    'ReadCapacityUnits': 5,
+                    'WriteCapacityUnits': 5
                 }
-            ],
-            ProvisionedThroughput={
-                'ReadCapacityUnits': 5,
-                'WriteCapacityUnits': 5
             }
-        )
-        
-        os.environ['DYNAMODB_TABLE_NAME'] = 'test-logs-table'
-        yield table
+        ],
+        ProvisionedThroughput={
+            'ReadCapacityUnits': 5,
+            'WriteCapacityUnits': 5
+        }
+    )
+    
+    os.environ['DYNAMODB_TABLE_NAME'] = 'test-logs-table'
+    yield table
 
 
 def test_ingest_log_success(dynamodb_table):
