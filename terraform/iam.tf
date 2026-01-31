@@ -112,7 +112,5 @@ resource "aws_iam_role_policy" "lambda_xray" {
   })
 }
 
-# Data sources for current AWS account and region
-data "aws_caller_identity" "current" {}
-data "aws_region" "current" {}
+
 
