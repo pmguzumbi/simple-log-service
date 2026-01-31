@@ -1,44 +1,43 @@
-# API Gateway configuration for log service
+# API Gateway REST API
+resource "aws_api_gateway_rest_api" "log_service" {
+  name        = "${var.project_name}-api-${var.environment}"
+  description = "API for Simple Log Service"
 
-# REST API
-resource "aws_api_gateway_rest_api" "main" {
-  name        = "${local.name_prefix}-api"
-  description = "API Gateway for Simple Log Service"
-  
   endpoint_configuration {
     types = ["REGIONAL"]
   }
-  
+
   tags = {
-    Name = "${local.name_prefix}-api"
+    Name        = "${var.project_name}-api-${var.environment}"
+    Environment = var.environment
+    Project     = var.project_name
   }
 }
 
 # /logs resource
 resource "aws_api_gateway_resource" "logs" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  parent_id   = aws_api_gateway_rest_api.main.root_resource_id
+  rest_api_id = aws_api_gateway_rest_api.log_service.id
+  parent_id   = aws_api_gateway_rest_api.log_service.root_resource_id
   path_part   = "logs"
 }
 
 # /logs/recent resource
-resource "aws_api_gateway_resource" "recent" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
+resource "aws_api_gateway_resource" "logs_recent" {
+  rest_api_id = aws_api_gateway_rest_api.log_service.id
   parent_id   = aws_api_gateway_resource.logs.id
   path_part   = "recent"
 }
 
 # POST /logs method (ingest)
 resource "aws_api_gateway_method" "post_logs" {
-  rest_api_id   = aws_api_gateway_rest_api.main.id
+  rest_api_id   = aws_api_gateway_rest_api.log_service.id
   resource_id   = aws_api_gateway_resource.logs.id
   http_method   = "POST"
-  authorization = "AWS_IAM"  # AWS SigV4 authentication
+  authorization = "NONE"
 }
 
-# POST /logs integration
 resource "aws_api_gateway_integration" "post_logs" {
-  rest_api_id             = aws_api_gateway_rest_api.main.id
+  rest_api_id             = aws_api_gateway_rest_api.log_service.id
   resource_id             = aws_api_gateway_resource.logs.id
   http_method             = aws_api_gateway_method.post_logs.http_method
   integration_http_method = "POST"
@@ -47,108 +46,95 @@ resource "aws_api_gateway_integration" "post_logs" {
 }
 
 # GET /logs/recent method (read)
-resource "aws_api_gateway_method" "get_recent" {
-  rest_api_id   = aws_api_gateway_rest_api.main.id
-  resource_id   = aws_api_gateway_resource.recent.id
+resource "aws_api_gateway_method" "get_logs_recent" {
+  rest_api_id   = aws_api_gateway_rest_api.log_service.id
+  resource_id   = aws_api_gateway_resource.logs_recent.id
   http_method   = "GET"
-  authorization = "AWS_IAM"  # AWS SigV4 authentication
-  
-  request_parameters = {
-    "method.request.querystring.service_name" = false
-    "method.request.querystring.log_type"     = false
-    "method.request.querystring.limit"        = false
-  }
+  authorization = "NONE"
 }
 
-# GET /logs/recent integration
-resource "aws_api_gateway_integration" "get_recent" {
-  rest_api_id             = aws_api_gateway_rest_api.main.id
-  resource_id             = aws_api_gateway_resource.recent.id
-  http_method             = aws_api_gateway_method.get_recent.http_method
+resource "aws_api_gateway_integration" "get_logs_recent" {
+  rest_api_id             = aws_api_gateway_rest_api.log_service.id
+  resource_id             = aws_api_gateway_resource.logs_recent.id
+  http_method             = aws_api_gateway_method.get_logs_recent.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = aws_lambda_function.read_recent.invoke_arn
 }
 
 # API Gateway deployment
-resource "aws_api_gateway_deployment" "main" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  
-  triggers = {
-    redeployment = sha1(jsonencode([
-      aws_api_gateway_resource.logs.id,
-      aws_api_gateway_resource.recent.id,
-      aws_api_gateway_method.post_logs.id,
-      aws_api_gateway_method.get_recent.id,
-      aws_api_gateway_integration.post_logs.id,
-      aws_api_gateway_integration.get_recent.id,
-    ]))
-  }
-  
+resource "aws_api_gateway_deployment" "log_service" {
+  rest_api_id = aws_api_gateway_rest_api.log_service.id
+
+  depends_on = [
+    aws_api_gateway_integration.post_logs,
+    aws_api_gateway_integration.get_logs_recent
+  ]
+
   lifecycle {
     create_before_destroy = true
   }
-  
-  depends_on = [
-    aws_api_gateway_integration.post_logs,
-    aws_api_gateway_integration.get_recent
-  ]
 }
 
 # API Gateway stage
-resource "aws_api_gateway_stage" "main" {
-  deployment_id = aws_api_gateway_deployment.main.id
-  rest_api_id   = aws_api_gateway_rest_api.main.id
+resource "aws_api_gateway_stage" "log_service" {
+  deployment_id = aws_api_gateway_deployment.log_service.id
+  rest_api_id   = aws_api_gateway_rest_api.log_service.id
   stage_name    = var.environment
-  
-  # Enable CloudWatch logging
-  access_log_settings {
-    destination_arn = aws_cloudwatch_log_group.api_gateway.arn
-    format = jsonencode({
-      requestId      = "$context.requestId"
-      ip             = "$context.identity.sourceIp"
-      caller         = "$context.identity.caller"
-      user           = "$context.identity.user"
-      requestTime    = "$context.requestTime"
-      httpMethod     = "$context.httpMethod"
-      resourcePath   = "$context.resourcePath"
-      status         = "$context.status"
-      protocol       = "$context.protocol"
-      responseLength = "$context.responseLength"
-    })
-  }
-  
-  # Enable X-Ray tracing
+
   xray_tracing_enabled = true
-  
+
   tags = {
-    Name = "${local.name_prefix}-${var.environment}"
+    Name        = "${var.project_name}-api-stage-${var.environment}"
+    Environment = var.environment
+    Project     = var.project_name
   }
 }
 
 # CloudWatch Log Group for API Gateway
 resource "aws_cloudwatch_log_group" "api_gateway" {
-  name              = "/aws/apigateway/${local.name_prefix}"
-  retention_in_days = var.log_retention_days
-  kms_key_id        = aws_kms_key.logs.arn
-  
+  name              = "/aws/apigateway/${var.project_name}-${var.environment}"
+  retention_in_days = 7
+  kms_key_id        = aws_kms_key.cloudwatch.arn
+
   tags = {
-    Name = "${local.name_prefix}-api-gateway-logs"
+    Name        = "${var.project_name}-api-logs-${var.environment}"
+    Environment = var.environment
+    Project     = var.project_name
   }
 }
 
-# API Gateway method settings
-resource "aws_api_gateway_method_settings" "main" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  stage_name  = aws_api_gateway_stage.main.stage_name
-  method_path = "*/*"
-  
-  settings {
-    metrics_enabled        = true
-    logging_level         = "INFO"
-    data_trace_enabled    = true
-    throttling_burst_limit = 5000
-    throttling_rate_limit  = 10000
+# API Gateway account settings for CloudWatch logging
+resource "aws_api_gateway_account" "log_service" {
+  cloudwatch_role_arn = aws_iam_role.api_gateway_cloudwatch.arn
+}
+
+# IAM role for API Gateway to write to CloudWatch
+resource "aws_iam_role" "api_gateway_cloudwatch" {
+  name = "${var.project_name}-api-gateway-cloudwatch-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "apigateway.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name        = "${var.project_name}-api-gateway-role-${var.environment}"
+    Environment = var.environment
+    Project     = var.project_name
   }
+}
+
+resource "aws_iam_role_policy_attachment" "api_gateway_cloudwatch" {
+  role       = aws_iam_role.api_gateway_cloudwatch.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
 }
 
