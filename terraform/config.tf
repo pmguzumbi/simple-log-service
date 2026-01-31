@@ -1,98 +1,69 @@
-# AWS Config configuration for compliance monitoring
-
-# S3 bucket for AWS Config
+# AWS Config S3 bucket for configuration snapshots
 resource "aws_s3_bucket" "config" {
   count  = var.enable_config ? 1 : 0
-  bucket = "${local.name_prefix}-config-${local.account_id}"
-  
+  bucket = "${var.project_name}-config-${var.environment}-${data.aws_caller_identity.current.account_id}"
+
   tags = {
-    Name = "${local.name_prefix}-config"
+    Name        = "${var.project_name}-config-bucket-${var.environment}"
+    Environment = var.environment
+    Project     = var.project_name
   }
 }
 
-# S3 bucket versioning
 resource "aws_s3_bucket_versioning" "config" {
   count  = var.enable_config ? 1 : 0
-  bucket = aws_s3_bucket.config[0].id
-  
+  bucket = aws_s3_bucket.config.id
+
   versioning_configuration {
     status = "Enabled"
   }
 }
 
-# S3 bucket encryption
-resource "aws_s3_bucket_server_side_encryption_configuration" "config" {
-  count  = var.enable_config ? 1 : 0
-  bucket = aws_s3_bucket.config[0].id
-  
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm     = "aws:kms"
-      kms_master_key_id = aws_kms_key.logs.arn
-    }
-  }
-}
-
-# S3 bucket public access block
 resource "aws_s3_bucket_public_access_block" "config" {
   count  = var.enable_config ? 1 : 0
-  bucket = aws_s3_bucket.config[0].id
-  
+  bucket = aws_s3_bucket.config.id
+
   block_public_acls       = true
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
 }
 
-# S3 bucket policy for AWS Config
-resource "aws_s3_bucket_policy" "config" {
+resource "aws_s3_bucket_server_side_encryption_configuration" "config" {
   count  = var.enable_config ? 1 : 0
-  bucket = aws_s3_bucket.config[0].id
-  
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "AWSConfigBucketPermissionsCheck"
-        Effect = "Allow"
-        Principal = {
-          Service = "config.amazonaws.com"
-        }
-        Action   = "s3:GetBucketAcl"
-        Resource = aws_s3_bucket.config[0].arn
-      },
-      {
-        Sid    = "AWSConfigBucketExistenceCheck"
-        Effect = "Allow"
-        Principal = {
-          Service = "config.amazonaws.com"
-        }
-        Action = "s3:ListBucket"
-        Resource = aws_s3_bucket.config[0].arn
-      },
-      {
-        Sid    = "AWSConfigBucketPutObject"
-        Effect = "Allow"
-        Principal = {
-          Service = "config.amazonaws.com"
-        }
-        Action   = "s3:PutObject"
-        Resource = "${aws_s3_bucket.config[0].arn}/*"
-        Condition = {
-          StringEquals = {
-            "s3:x-amz-acl" = "bucket-owner-full-control"
-          }
-        }
-      }
-    ]
-  })
+  bucket = aws_s3_bucket.config.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.cloudwatch.arn
+    }
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "config" {
+  count  = var.enable_config ? 1 : 0
+  bucket = aws_s3_bucket.config.id
+
+  rule {
+    id     = "delete-old-snapshots"
+    status = "Enabled"
+
+    expiration {
+      days = 90
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
+  }
 }
 
 # IAM role for AWS Config
 resource "aws_iam_role" "config" {
   count = var.enable_config ? 1 : 0
-  name  = "${local.name_prefix}-config-role"
-  
+  name  = "${var.project_name}-config-role-${var.environment}"
+
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -105,25 +76,25 @@ resource "aws_iam_role" "config" {
       }
     ]
   })
-  
+
   tags = {
-    Name = "${local.name_prefix}-config-role"
+    Name        = "${var.project_name}-config-role-${var.environment}"
+    Environment = var.environment
+    Project     = var.project_name
   }
 }
 
-# Attach AWS managed policy for Config
 resource "aws_iam_role_policy_attachment" "config" {
   count      = var.enable_config ? 1 : 0
-  role       = aws_iam_role.config[0].name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/ConfigRole"
+  role       = aws_iam_role.config.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWS_ConfigRole"  # Fixed: Changed from ConfigRole to AWS_ConfigRole
 }
 
-# IAM policy for Config to write to S3
 resource "aws_iam_role_policy" "config_s3" {
   count = var.enable_config ? 1 : 0
-  name  = "${local.name_prefix}-config-s3-policy"
-  role  = aws_iam_role.config[0].id
-  
+  name  = "${var.project_name}-config-s3-policy-${var.environment}"
+  role  = aws_iam_role.config.id
+
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -135,196 +106,126 @@ resource "aws_iam_role_policy" "config_s3" {
           "s3:GetObject"
         ]
         Resource = [
-          aws_s3_bucket.config[0].arn,
-          "${aws_s3_bucket.config[0].arn}/*"
+          aws_s3_bucket.config.arn,
+          "${aws_s3_bucket.config.arn}/*"
         ]
       }
     ]
   })
 }
 
-# AWS Config recorder
+# AWS Config Configuration Recorder
 resource "aws_config_configuration_recorder" "main" {
   count    = var.enable_config ? 1 : 0
-  name     = "${local.name_prefix}-recorder"
-  role_arn = aws_iam_role.config[0].arn
-  
+  name     = "${var.project_name}-recorder-${var.environment}"
+  role_arn = aws_iam_role.config.arn
+
   recording_group {
-    all_supported = true
+    all_supported                 = true
     include_global_resource_types = true
   }
 }
 
-# AWS Config delivery channel
+# AWS Config Delivery Channel
 resource "aws_config_delivery_channel" "main" {
   count          = var.enable_config ? 1 : 0
-  name           = "${local.name_prefix}-delivery-channel"
-  s3_bucket_name = aws_s3_bucket.config[0].id
-  
+  name           = "${var.project_name}-delivery-channel-${var.environment}"
+  s3_bucket_name = aws_s3_bucket.config.bucket
+
   snapshot_delivery_properties {
     delivery_frequency = var.config_snapshot_frequency
   }
-  
+
   depends_on = [aws_config_configuration_recorder.main]
 }
 
-# Start Config recorder
+# Start the Configuration Recorder
 resource "aws_config_configuration_recorder_status" "main" {
   count      = var.enable_config ? 1 : 0
-  name       = aws_config_configuration_recorder.main[0].name
+  name       = aws_config_configuration_recorder.main.name
   is_enabled = true
-  
+
   depends_on = [aws_config_delivery_channel.main]
 }
 
-# Config rule: DynamoDB encryption
-resource "aws_config_config_rule" "dynamodb_encrypted" {
+# AWS Config Rules
+resource "aws_config_config_rule" "encrypted_volumes" {
   count = var.enable_config ? 1 : 0
-  name  = "${local.name_prefix}-dynamodb-encrypted"
-  
+  name  = "${var.project_name}-encrypted-volumes-${var.environment}"
+
   source {
     owner             = "AWS"
-    source_identifier = "DYNAMODB_TABLE_ENCRYPTED_KMS"
+    source_identifier = "ENCRYPTED_VOLUMES"
   }
-  
+
   depends_on = [aws_config_configuration_recorder.main]
 }
 
-# Config rule: DynamoDB PITR
-resource "aws_config_config_rule" "dynamodb_pitr" {
+resource "aws_config_config_rule" "s3_bucket_public_read_prohibited" {
   count = var.enable_config ? 1 : 0
-  name  = "${local.name_prefix}-dynamodb-pitr"
-  
+  name  = "${var.project_name}-s3-public-read-prohibited-${var.environment}"
+
   source {
     owner             = "AWS"
-    source_identifier = "DYNAMODB_PITR_ENABLED"
+    source_identifier = "S3_BUCKET_PUBLIC_READ_PROHIBITED"
   }
-  
+
   depends_on = [aws_config_configuration_recorder.main]
 }
 
-# Config rule: Lambda encryption
-resource "aws_config_config_rule" "lambda_encrypted" {
+resource "aws_config_config_rule" "s3_bucket_public_write_prohibited" {
   count = var.enable_config ? 1 : 0
-  name  = "${local.name_prefix}-lambda-encrypted"
-  
+  name  = "${var.project_name}-s3-public-write-prohibited-${var.environment}"
+
   source {
     owner             = "AWS"
-    source_identifier = "LAMBDA_FUNCTION_SETTINGS_CHECK"
+    source_identifier = "S3_BUCKET_PUBLIC_WRITE_PROHIBITED"
   }
-  
-  input_parameters = jsonencode({
-    runtime = "python3.11"
-  })
-  
+
   depends_on = [aws_config_configuration_recorder.main]
 }
 
-# Config rule: CloudWatch Logs encryption
-resource "aws_config_config_rule" "cloudwatch_encrypted" {
+resource "aws_config_config_rule" "iam_password_policy" {
   count = var.enable_config ? 1 : 0
-  name  = "${local.name_prefix}-cloudwatch-encrypted"
-  
+  name  = "${var.project_name}-iam-password-policy-${var.environment}"
+
   source {
     owner             = "AWS"
-    source_identifier = "CLOUDWATCH_LOG_GROUP_ENCRYPTED"
+    source_identifier = "IAM_PASSWORD_POLICY"
   }
-  
+
   depends_on = [aws_config_configuration_recorder.main]
 }
 
-# Config rule: S3 bucket encryption
-resource "aws_config_config_rule" "s3_encrypted" {
+resource "aws_config_config_rule" "root_account_mfa_enabled" {
   count = var.enable_config ? 1 : 0
-  name  = "${local.name_prefix}-s3-encrypted"
-  
-  source {
-    owner             = "AWS"
-    source_identifier = "S3_BUCKET_SERVER_SIDE_ENCRYPTION_ENABLED"
-  }
-  
-  depends_on = [aws_config_configuration_recorder.main]
-}
+  name  = "${var.project_name}-root-mfa-enabled-${var.environment}"
 
-# Config rule: S3 bucket versioning
-resource "aws_config_config_rule" "s3_versioning" {
-  count = var.enable_config ? 1 : 0
-  name  = "${local.name_prefix}-s3-versioning"
-  
   source {
     owner             = "AWS"
-    source_identifier = "S3_BUCKET_VERSIONING_ENABLED"
+    source_identifier = "ROOT_ACCOUNT_MFA_ENABLED"
   }
-  
+
   depends_on = [aws_config_configuration_recorder.main]
 }
 
 # SNS topic for Config notifications
 resource "aws_sns_topic" "config_notifications" {
   count             = var.enable_config ? 1 : 0
-  name              = "${local.name_prefix}-config-notifications"
-  display_name      = "AWS Config Compliance Notifications"
-  kms_master_key_id = aws_kms_key.logs.id
-  
+  name              = "${var.project_name}-config-notifications-${var.environment}"
+  kms_master_key_id = aws_kms_key.cloudwatch.id
+
   tags = {
-    Name = "${local.name_prefix}-config-notifications"
+    Name        = "${var.project_name}-config-notifications-${var.environment}"
+    Environment = var.environment
+    Project     = var.project_name
   }
 }
 
-# SNS topic subscription for Config
 resource "aws_sns_topic_subscription" "config_email" {
   count     = var.enable_config && var.alarm_email != "" ? 1 : 0
-  topic_arn = aws_sns_topic.config_notifications[0].arn
+  topic_arn = aws_sns_topic.config_notifications.arn
   protocol  = "email"
   endpoint  = var.alarm_email
 }
 
-# EventBridge rule for Config compliance changes
-resource "aws_cloudwatch_event_rule" "config_compliance" {
-  count       = var.enable_config ? 1 : 0
-  name        = "${local.name_prefix}-config-compliance-change"
-  description = "Trigger on Config compliance changes"
-  
-  event_pattern = jsonencode({
-    source      = ["aws.config"]
-    detail-type = ["Config Rules Compliance Change"]
-    detail = {
-      configRuleName = [
-        {
-          prefix = local.name_prefix
-        }
-      ]
-      newEvaluationResult = {
-        complianceType = ["NON_COMPLIANT"]
-      }
-    }
-  })
-}
-
-# EventBridge target to send to SNS
-resource "aws_cloudwatch_event_target" "config_sns" {
-  count     = var.enable_config ? 1 : 0
-  rule      = aws_cloudwatch_event_rule.config_compliance[0].name
-  target_id = "SendToSNS"
-  arn       = aws_sns_topic.config_notifications[0].arn
-}
-
-# SNS topic policy to allow EventBridge
-resource "aws_sns_topic_policy" "config_notifications" {
-  count  = var.enable_config ? 1 : 0
-  arn    = aws_sns_topic.config_notifications[0].arn
-  
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Principal = {
-          Service = "events.amazonaws.com"
-        }
-        Action   = "SNS:Publish"
-        Resource = aws_sns_topic.config_notifications[0].arn
-      }
-    ]
-  })
-}
