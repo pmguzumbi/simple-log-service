@@ -1,5 +1,3 @@
-```hcl
-
 # Lambda function for ingesting logs
 data "archive_file" "ingest_log" {
   type        = "zip"
@@ -113,5 +111,3 @@ resource "aws_lambda_permission" "read_recent_api_gateway" {
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.log_service.execution_arn}/*/*"
 }
-
-```
