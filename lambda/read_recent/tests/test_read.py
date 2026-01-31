@@ -1,24 +1,31 @@
+
+"""
+Unit tests for read_recent Lambda function
+"""
+
 import json
-import pytest
 import os
-from moto import mock_dynamodb, mock_cloudwatch
+import pytest
+from moto import mock_dynamodb
 import boto3
-from decimal import Decimal
-from datetime import datetime, timedelta
+from datetime import datetime
+import time
 
-# Set environment variables before importing Lambda function
-os.environ['DYNAMODB_TABLE_NAME'] = 'LogsTable'
-os.environ['AWS_DEFAULT_REGION'] = 'eu-west-2'
+# Import the Lambda handler - use sys.path to avoid 'lambda' keyword issue
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from index import lambda_handler
 
-from lambda.read_recent.index import lambda_handler
 
 @pytest.fixture
 def aws_credentials():
-    """Mock AWS credentials for moto testing"""
+    """Mock AWS credentials for moto"""
     os.environ['AWS_ACCESS_KEY_ID'] = 'testing'
     os.environ['AWS_SECRET_ACCESS_KEY'] = 'testing'
     os.environ['AWS_SECURITY_TOKEN'] = 'testing'
     os.environ['AWS_SESSION_TOKEN'] = 'testing'
+    os.environ['AWS_DEFAULT_REGION'] = 'eu-west-2'
+
 
 @pytest.fixture
 def dynamodb_table_with_data(aws_credentials):
@@ -26,9 +33,8 @@ def dynamodb_table_with_data(aws_credentials):
     with mock_dynamodb():
         dynamodb = boto3.resource('dynamodb', region_name='eu-west-2')
         
-        # Create table with same schema as production
         table = dynamodb.create_table(
-            TableName='LogsTable',
+            TableName='test-logs-table',
             KeySchema=[
                 {'AttributeName': 'service_name', 'KeyType': 'HASH'},
                 {'AttributeName': 'timestamp', 'KeyType': 'RANGE'}
@@ -52,42 +58,47 @@ def dynamodb_table_with_data(aws_credentials):
                     }
                 }
             ],
-            BillingMode='PROVISIONED',
             ProvisionedThroughput={
                 'ReadCapacityUnits': 5,
                 'WriteCapacityUnits': 5
             }
         )
         
-        # Add recent test data (within 24 hours)
-        now = datetime.utcnow()
-        table.put_item(Item={
-            'log_id': 'test-1',
-            'service_name': 'test-service',
-            'log_type': 'application',
-            'timestamp': Decimal(str(now.timestamp())),
-            'level': 'INFO',
-            'message': 'Recent log',
-            'metadata': {}
-        })
+        # Add test data
+        current_time = int(time.time())
+        for i in range(10):
+            table.put_item(
+                Item={
+                    'service_name': 'test-service',
+                    'timestamp': current_time - i,
+                    'log_id': f'test-log-{i}',
+                    'log_type': 'application',
+                    'level': 'INFO',
+                    'message': f'Test log message {i}'
+                }
+            )
         
-        # Add old log (should not be retrieved - older than 24 hours)
-        old_time = now - timedelta(hours=48)
-        table.put_item(Item={
-            'log_id': 'test-2',
-            'service_name': 'test-service',
-            'log_type': 'application',
-            'timestamp': Decimal(str(old_time.timestamp())),
-            'level': 'INFO',
-            'message': 'Old log',
-            'metadata': {}
-        })
-        
+        os.environ['DYNAMODB_TABLE_NAME'] = 'test-logs-table'
         yield table
 
-@mock_cloudwatch
-def test_retrieve_logs_by_service(dynamodb_table_with_data):
-    """Test retrieving logs by service name"""
+
+def test_read_recent_logs_success(dynamodb_table_with_data):
+    """Test successful retrieval of recent logs"""
+    event = {
+        'queryStringParameters': None
+    }
+    
+    response = lambda_handler(event, None)
+    
+    assert response['statusCode'] == 200
+    body = json.loads(response['body'])
+    assert 'logs' in body
+    assert 'count' in body
+    assert body['count'] > 0
+
+
+def test_read_recent_logs_with_service_filter(dynamodb_table_with_data):
+    """Test retrieval with service name filter"""
     event = {
         'queryStringParameters': {
             'service_name': 'test-service'
@@ -96,15 +107,29 @@ def test_retrieve_logs_by_service(dynamodb_table_with_data):
     
     response = lambda_handler(event, None)
     
-    # Verify successful response
     assert response['statusCode'] == 200
     body = json.loads(response['body'])
-    assert body['count'] >= 1
-    assert 'logs' in body
+    assert body['count'] > 0
+    assert all(log['service_name'] == 'test-service' for log in body['logs'])
 
-@mock_cloudwatch
-def test_retrieve_logs_by_type(dynamodb_table_with_data):
-    """Test retrieving logs by log type using GSI"""
+
+def test_read_recent_logs_with_limit(dynamodb_table_with_data):
+    """Test retrieval with limit parameter"""
+    event = {
+        'queryStringParameters': {
+            'limit': '5'
+        }
+    }
+    
+    response = lambda_handler(event, None)
+    
+    assert response['statusCode'] == 200
+    body = json.loads(response['body'])
+    assert body['count'] <= 5
+
+
+def test_read_recent_logs_with_log_type(dynamodb_table_with_data):
+    """Test retrieval with log type filter"""
     event = {
         'queryStringParameters': {
             'log_type': 'application'
@@ -113,39 +138,23 @@ def test_retrieve_logs_by_type(dynamodb_table_with_data):
     
     response = lambda_handler(event, None)
     
-    # Verify successful response
     assert response['statusCode'] == 200
     body = json.loads(response['body'])
-    assert 'logs' in body
+    assert all(log['log_type'] == 'application' for log in body['logs'])
 
-@mock_cloudwatch
-def test_retrieve_logs_with_limit(dynamodb_table_with_data):
-    """Test retrieving logs with limit parameter"""
+
+def test_read_recent_logs_no_results(dynamodb_table_with_data):
+    """Test retrieval with no matching results"""
     event = {
         'queryStringParameters': {
-            'limit': '1'
+            'service_name': 'non-existent-service'
         }
     }
     
     response = lambda_handler(event, None)
     
-    # Verify successful response and limit respected
     assert response['statusCode'] == 200
     body = json.loads(response['body'])
-    assert body['count'] <= 1
+    assert body['count'] == 0
+    assert body['logs'] == []
 
-@mock_cloudwatch
-def test_retrieve_logs_no_parameters(dynamodb_table_with_data):
-    """Test retrieving logs without any parameters (scan)"""
-    event = {
-        'queryStringParameters': None
-    }
-    
-    response = lambda_handler(event, None)
-    
-    # Verify successful response
-    assert response['statusCode'] == 200
-    body = json.loads(response['body'])
-    assert 'logs' in body
-
-``
