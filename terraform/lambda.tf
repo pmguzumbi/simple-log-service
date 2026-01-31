@@ -94,20 +94,3 @@ resource "aws_cloudwatch_log_group" "read_recent" {
     Project     = var.project_name
   }
 }
-
-# Lambda permissions for API Gateway
-resource "aws_lambda_permission" "ingest_api_gateway" {
-  statement_id  = "AllowAPIGatewayInvoke"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.ingest_log.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.log_service.execution_arn}/*/*"
-}
-
-resource "aws_lambda_permission" "read_recent_api_gateway" {
-  statement_id  = "AllowAPIGatewayInvoke"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.read_recent.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.log_service.execution_arn}/*/*"
-}
