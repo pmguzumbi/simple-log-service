@@ -1,5 +1,3 @@
-```terraform
-
 # IAM roles for API Gateway authentication with temporary credentials
 
 # IAM role for log ingestion (write access)
@@ -160,5 +158,3 @@ resource "aws_iam_role_policy" "log_full_access_policy" {
     ]
   })
 }
-
-```
