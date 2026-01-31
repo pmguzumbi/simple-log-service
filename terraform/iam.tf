@@ -1,9 +1,7 @@
-# IAM roles and policies
+# IAM role for Lambda functions
+resource "aws_iam_role" "lambda_role" {
+  name = "${var.project_name}-lambda-role-${var.environment}"
 
-# Lambda execution role
-resource "aws_iam_role" "lambda_execution" {
-  name = "${local.name_prefix}-lambda-execution"
-  
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -16,17 +14,19 @@ resource "aws_iam_role" "lambda_execution" {
       }
     ]
   })
-  
+
   tags = {
-    Name = "${local.name_prefix}-lambda-execution"
+    Name        = "${var.project_name}-lambda-role-${var.environment}"
+    Environment = var.environment
+    Project     = var.project_name
   }
 }
 
-# Lambda execution policy
-resource "aws_iam_role_policy" "lambda_execution" {
-  name = "${local.name_prefix}-lambda-execution-policy"
-  role = aws_iam_role.lambda_execution.id
-  
+# IAM policy for Lambda to access DynamoDB
+resource "aws_iam_role_policy" "lambda_dynamodb" {
+  name = "${var.project_name}-lambda-dynamodb-${var.environment}"
+  role = aws_iam_role.lambda_role.id
+
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -35,14 +35,25 @@ resource "aws_iam_role_policy" "lambda_execution" {
         Action = [
           "dynamodb:PutItem",
           "dynamodb:GetItem",
+          "dynamodb:Scan",
           "dynamodb:Query",
-          "dynamodb:Scan"
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem"
         ]
-        Resource = [
-          aws_dynamodb_table.logs.arn,
-          "${aws_dynamodb_table.logs.arn}/index/*"
-        ]
-      },
+        Resource = aws_dynamodb_table.logs.arn
+      }
+    ]
+  })
+}
+
+# IAM policy for Lambda to write CloudWatch Logs
+resource "aws_iam_role_policy" "lambda_logs" {
+  name = "${var.project_name}-lambda-logs-${var.environment}"
+  role = aws_iam_role.lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
       {
         Effect = "Allow"
         Action = [
@@ -50,23 +61,45 @@ resource "aws_iam_role_policy" "lambda_execution" {
           "logs:CreateLogStream",
           "logs:PutLogEvents"
         ]
-        Resource = "arn:aws:logs:${var.aws_region}:${local.account_id}:*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "cloudwatch:PutMetricData"
-        ]
-        Resource = "*"
-      },
+        Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.project_name}-*"
+      }
+    ]
+  })
+}
+
+# IAM policy for Lambda to use KMS keys
+resource "aws_iam_role_policy" "lambda_kms" {
+  name = "${var.project_name}-lambda-kms-${var.environment}"
+  role = aws_iam_role.lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
       {
         Effect = "Allow"
         Action = [
           "kms:Decrypt",
-          "kms:DescribeKey"
+          "kms:Encrypt",
+          "kms:GenerateDataKey"
         ]
-        Resource = aws_kms_key.logs.arn
-      },
+        Resource = [
+          aws_kms_key.lambda.arn,
+          aws_kms_key.dynamodb.arn,
+          aws_kms_key.cloudwatch.arn
+        ]
+      }
+    ]
+  })
+}
+
+# IAM policy for Lambda X-Ray tracing
+resource "aws_iam_role_policy" "lambda_xray" {
+  name = "${var.project_name}-lambda-xray-${var.environment}"
+  role = aws_iam_role.lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
       {
         Effect = "Allow"
         Action = [
@@ -79,42 +112,7 @@ resource "aws_iam_role_policy" "lambda_execution" {
   })
 }
 
-# Attach AWS managed policy for Lambda basic execution
-resource "aws_iam_role_policy_attachment" "lambda_execution" {
-  role       = aws_iam_role.lambda_execution.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-}
-
-# API Gateway CloudWatch role
-resource "aws_iam_role" "api_gateway_cloudwatch" {
-  name = "${local.name_prefix}-api-gateway-cloudwatch"
-  
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "apigateway.amazonaws.com"
-        }
-      }
-    ]
-  })
-  
-  tags = {
-    Name = "${local.name_prefix}-api-gateway-cloudwatch"
-  }
-}
-
-# Attach AWS managed policy for API Gateway CloudWatch logs
-resource "aws_iam_role_policy_attachment" "api_gateway_cloudwatch" {
-  role       = aws_iam_role.api_gateway_cloudwatch.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
-}
-
-# API Gateway account settings
-resource "aws_api_gateway_account" "main" {
-  cloudwatch_role_arn = aws_iam_role.api_gateway_cloudwatch.arn
-}
+# Data sources for current AWS account and region
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
 
