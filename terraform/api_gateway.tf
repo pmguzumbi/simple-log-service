@@ -1,154 +1,154 @@
-# Lambda function configuration for log ingestion and retrieval
+# API Gateway configuration for log service
 
-# Data source for Lambda deployment package (ingest)
-data "archive_file" "ingest_log" {
-  type        = "zip"
-  source_dir  = "${path.module}/../lambda/ingest_log"
-  output_path = "${path.module}/ingest_log.zip"
+# REST API
+resource "aws_api_gateway_rest_api" "main" {
+  name        = "${local.name_prefix}-api"
+  description = "API Gateway for Simple Log Service"
   
-  excludes = [
-    "tests",
-    "__pycache__",
-    "*.pyc",
-    ".pytest_cache"
-  ]
-}
-
-# Data source for Lambda deployment package (read)
-data "archive_file" "read_recent" {
-  type        = "zip"
-  source_dir  = "${path.module}/../lambda/read_recent"
-  output_path = "${path.module}/read_recent.zip"
-  
-  excludes = [
-    "tests",
-    "__pycache__",
-    "*.pyc",
-    ".pytest_cache"
-  ]
-}
-
-# Lambda function for log ingestion
-resource "aws_lambda_function" "ingest_log" {
-  filename         = data.archive_file.ingest_log.output_path
-  function_name    = "${local.name_prefix}-ingest-log"
-  role            = aws_iam_role.lambda_execution.arn
-  handler         = "index.lambda_handler"
-  source_code_hash = data.archive_file.ingest_log.output_base64sha256
-  runtime         = "python3.11"
-  timeout         = var.lambda_timeout
-  memory_size     = var.lambda_memory_size
-  
-  # Environment variables
-  environment {
-    variables = {
-      DYNAMODB_TABLE_NAME = aws_dynamodb_table.logs.name
-      LOG_LEVEL          = "INFO"
-      ENVIRONMENT        = var.environment
-    }
+  endpoint_configuration {
+    types = ["REGIONAL"]
   }
-  
-  # Enable encryption for environment variables
-  kms_key_arn = aws_kms_key.logs.arn
-  
-  # Tracing configuration
-  tracing_config {
-    mode = "Active"
-  }
-  
-  # Reserved concurrent executions (optional)
-  reserved_concurrent_executions = -1  # No limit
   
   tags = {
-    Name        = "${local.name_prefix}-ingest-log"
-    Description = "Lambda function for log ingestion"
+    Name = "${local.name_prefix}-api"
+  }
+}
+
+# /logs resource
+resource "aws_api_gateway_resource" "logs" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_rest_api.main.root_resource_id
+  path_part   = "logs"
+}
+
+# /logs/recent resource
+resource "aws_api_gateway_resource" "recent" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_resource.logs.id
+  path_part   = "recent"
+}
+
+# POST /logs method (ingest)
+resource "aws_api_gateway_method" "post_logs" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.logs.id
+  http_method   = "POST"
+  authorization = "AWS_IAM"  # AWS SigV4 authentication
+}
+
+# POST /logs integration
+resource "aws_api_gateway_integration" "post_logs" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.logs.id
+  http_method             = aws_api_gateway_method.post_logs.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.ingest_log.invoke_arn
+}
+
+# GET /logs/recent method (read)
+resource "aws_api_gateway_method" "get_recent" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.recent.id
+  http_method   = "GET"
+  authorization = "AWS_IAM"  # AWS SigV4 authentication
+  
+  request_parameters = {
+    "method.request.querystring.service_name" = false
+    "method.request.querystring.log_type"     = false
+    "method.request.querystring.limit"        = false
+  }
+}
+
+# GET /logs/recent integration
+resource "aws_api_gateway_integration" "get_recent" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.recent.id
+  http_method             = aws_api_gateway_method.get_recent.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.read_recent.invoke_arn
+}
+
+# API Gateway deployment
+resource "aws_api_gateway_deployment" "main" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  
+  triggers = {
+    redeployment = sha1(jsonencode([
+      aws_api_gateway_resource.logs.id,
+      aws_api_gateway_resource.recent.id,
+      aws_api_gateway_method.post_logs.id,
+      aws_api_gateway_method.get_recent.id,
+      aws_api_gateway_integration.post_logs.id,
+      aws_api_gateway_integration.get_recent.id,
+    ]))
+  }
+  
+  lifecycle {
+    create_before_destroy = true
   }
   
   depends_on = [
-    aws_cloudwatch_log_group.ingest_log,
-    aws_iam_role_policy_attachment.lambda_execution
+    aws_api_gateway_integration.post_logs,
+    aws_api_gateway_integration.get_recent
   ]
 }
 
-# Lambda function for reading recent logs
-resource "aws_lambda_function" "read_recent" {
-  filename         = data.archive_file.read_recent.output_path
-  function_name    = "${local.name_prefix}-read-recent"
-  role            = aws_iam_role.lambda_execution.arn
-  handler         = "index.lambda_handler"
-  source_code_hash = data.archive_file.read_recent.output_base64sha256
-  runtime         = "python3.11"
-  timeout         = var.lambda_timeout
-  memory_size     = var.lambda_memory_size
+# API Gateway stage
+resource "aws_api_gateway_stage" "main" {
+  deployment_id = aws_api_gateway_deployment.main.id
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  stage_name    = var.environment
   
-  # Environment variables
-  environment {
-    variables = {
-      DYNAMODB_TABLE_NAME = aws_dynamodb_table.logs.name
-      LOG_LEVEL          = "INFO"
-      ENVIRONMENT        = var.environment
-    }
+  # Enable CloudWatch logging
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.api_gateway.arn
+    format = jsonencode({
+      requestId      = "$context.requestId"
+      ip             = "$context.identity.sourceIp"
+      caller         = "$context.identity.caller"
+      user           = "$context.identity.user"
+      requestTime    = "$context.requestTime"
+      httpMethod     = "$context.httpMethod"
+      resourcePath   = "$context.resourcePath"
+      status         = "$context.status"
+      protocol       = "$context.protocol"
+      responseLength = "$context.responseLength"
+    })
   }
   
-  # Enable encryption for environment variables
-  kms_key_arn = aws_kms_key.logs.arn
-  
-  # Tracing configuration
-  tracing_config {
-    mode = "Active"
-  }
-  
-  # Reserved concurrent executions (optional)
-  reserved_concurrent_executions = -1  # No limit
+  # Enable X-Ray tracing
+  xray_tracing_enabled = true
   
   tags = {
-    Name        = "${local.name_prefix}-read-recent"
-    Description = "Lambda function for reading recent logs"
+    Name = "${local.name_prefix}-${var.environment}"
   }
-  
-  depends_on = [
-    aws_cloudwatch_log_group.read_recent,
-    aws_iam_role_policy_attachment.lambda_execution
-  ]
 }
 
-# CloudWatch Log Group for ingest Lambda
-resource "aws_cloudwatch_log_group" "ingest_log" {
-  name              = "/aws/lambda/${local.name_prefix}-ingest-log"
+# CloudWatch Log Group for API Gateway
+resource "aws_cloudwatch_log_group" "api_gateway" {
+  name              = "/aws/apigateway/${local.name_prefix}"
   retention_in_days = var.log_retention_days
   kms_key_id        = aws_kms_key.logs.arn
   
   tags = {
-    Name = "${local.name_prefix}-ingest-log-logs"
+    Name = "${local.name_prefix}-api-gateway-logs"
   }
 }
 
-# CloudWatch Log Group for read Lambda
-resource "aws_cloudwatch_log_group" "read_recent" {
-  name              = "/aws/lambda/${local.name_prefix}-read-recent"
-  retention_in_days = var.log_retention_days
-  kms_key_id        = aws_kms_key.logs.arn
+# API Gateway method settings
+resource "aws_api_gateway_method_settings" "main" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  stage_name  = aws_api_gateway_stage.main.stage_name
+  method_path = "*/*"
   
-  tags = {
-    Name = "${local.name_prefix}-read-recent-logs"
+  settings {
+    metrics_enabled        = true
+    logging_level         = "INFO"
+    data_trace_enabled    = true
+    throttling_burst_limit = 5000
+    throttling_rate_limit  = 10000
   }
-}
-
-# Lambda permission for API Gateway (ingest)
-resource "aws_lambda_permission" "api_gateway_ingest" {
-  statement_id  = "AllowAPIGatewayInvoke"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.ingest_log.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
-}
-
-# Lambda permission for API Gateway (read)
-resource "aws_lambda_permission" "api_gateway_read" {
-  statement_id  = "AllowAPIGatewayInvoke"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.read_recent.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
 }
 
