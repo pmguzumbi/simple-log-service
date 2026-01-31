@@ -1,3 +1,5 @@
+```terraform
+
 # Main Terraform configuration for Simple Log Service
 
 terraform {
@@ -8,6 +10,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.0"
+    }
   }
   
   # Optional: Configure S3 backend for state management
@@ -15,10 +21,10 @@ terraform {
   # backend "s3" {
   #   bucket         = "your-terraform-state-bucket"
   #   key            = "simple-log-service/terraform.tfstate"
-  #   region         = "eu-west-2"
+  #   region         = "us-east-1"
   #   encrypt        = true
   #   dynamodb_table = "terraform-state-lock"
-  #   kms_key_id     = "arn:aws:kms:eu-west-2:ACCOUNT:key/KEY-ID"
+  #   kms_key_id     = "arn:aws:kms:us-east-1:ACCOUNT:key/KEY-ID"
   # }
 }
 
@@ -41,11 +47,14 @@ provider "aws" {
 # Data source for current AWS account ID
 data "aws_caller_identity" "current" {}
 
+# Data source for current AWS region
+data "aws_region" "current" {}
+
 # Data source for available availability zones
 data "aws_availability_zones" "available" {
   state = "available"
   
-  # Filter to only include zones in eu-west-2
+  # Filter to only include zones in the configured region
   filter {
     name   = "region-name"
     values = [var.aws_region]
@@ -70,3 +79,4 @@ locals {
   }
 }
 
+```
