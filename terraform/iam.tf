@@ -42,10 +42,12 @@ resource "aws_iam_role" "log_ingest_role" {
     ]
   })
 
-  tags = merge(var.tags, {
-    Name = "simple-log-service-log-ingest-role-${var.environment}"
-    Role = "LogIngest"
-  })
+  tags = {
+    Name        = "simple-log-service-log-ingest-role-${var.environment}"
+    Role        = "LogIngest"
+    Environment = var.environment
+    Project     = var.project_name
+  }
 }
 
 # Policy for log ingest role - write-only access to DynamoDB
@@ -119,10 +121,12 @@ resource "aws_iam_role" "log_read_role" {
     ]
   })
 
-  tags = merge(var.tags, {
-    Name = "simple-log-service-log-read-role-${var.environment}"
-    Role = "LogRead"
-  })
+  tags = {
+    Name        = "simple-log-service-log-read-role-${var.environment}"
+    Role        = "LogRead"
+    Environment = var.environment
+    Project     = var.project_name
+  }
 }
 
 # Policy for log read role - read-only access to DynamoDB
@@ -200,10 +204,12 @@ resource "aws_iam_role" "log_full_access_role" {
     ]
   })
 
-  tags = merge(var.tags, {
-    Name = "simple-log-service-log-full-access-role-${var.environment}"
-    Role = "LogFullAccess"
-  })
+  tags = {
+    Name        = "simple-log-service-log-full-access-role-${var.environment}"
+    Role        = "LogFullAccess"
+    Environment = var.environment
+    Project     = var.project_name
+  }
 }
 
 # Policy for full access role - read and write access to DynamoDB
@@ -272,10 +278,12 @@ resource "aws_iam_role" "ingest_lambda_role" {
     ]
   })
 
-  tags = merge(var.tags, {
-    Name = "simple-log-service-ingest-lambda-role-${var.environment}"
-    Role = "LambdaExecution"
-  })
+  tags = {
+    Name        = "simple-log-service-ingest-lambda-role-${var.environment}"
+    Role        = "LambdaExecution"
+    Environment = var.environment
+    Project     = var.project_name
+  }
 }
 
 # Policy for ingest Lambda execution role
@@ -335,10 +343,12 @@ resource "aws_iam_role" "read_lambda_role" {
     ]
   })
 
-  tags = merge(var.tags, {
-    Name = "simple-log-service-read-lambda-role-${var.environment}"
-    Role = "LambdaExecution"
-  })
+  tags = {
+    Name        = "simple-log-service-read-lambda-role-${var.environment}"
+    Role        = "LambdaExecution"
+    Environment = var.environment
+    Project     = var.project_name
+  }
 }
 
 # Policy for read Lambda execution role
@@ -411,4 +421,3 @@ output "read_lambda_role_arn" {
   description = "ARN of the read Lambda execution role"
   value       = aws_iam_role.read_lambda_role.arn
 }
-
