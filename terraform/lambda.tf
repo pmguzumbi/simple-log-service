@@ -13,7 +13,7 @@ data "archive_file" "ingest_lambda_zip" {
 resource "aws_lambda_function" "ingest_log" {
   filename         = data.archive_file.ingest_lambda_zip.output_path
   function_name    = "simple-log-service-ingest-${var.environment}"
-  role            = aws_iam_role.lambda_role.arn
+  role            = aws_iam_role.ingest_lambda_role.arn
   handler         = "index.lambda_handler"
   source_code_hash = data.archive_file.ingest_lambda_zip.output_base64sha256
   runtime         = "python3.11"
@@ -35,6 +35,7 @@ resource "aws_lambda_function" "ingest_log" {
     Name        = "simple-log-service-ingest-${var.environment}"
     Environment = var.environment
     ManagedBy   = "Terraform"
+    Project     = var.project_name
   }
 }
 
@@ -49,7 +50,7 @@ data "archive_file" "read_recent_lambda_zip" {
 resource "aws_lambda_function" "read_recent" {
   filename         = data.archive_file.read_recent_lambda_zip.output_path
   function_name    = "simple-log-service-read-recent-${var.environment}"
-  role            = aws_iam_role.lambda_role.arn
+  role            = aws_iam_role.read_lambda_role.arn
   handler         = "index.lambda_handler"
   source_code_hash = data.archive_file.read_recent_lambda_zip.output_base64sha256
   runtime         = "python3.11"
@@ -71,6 +72,7 @@ resource "aws_lambda_function" "read_recent" {
     Name        = "simple-log-service-read-recent-${var.environment}"
     Environment = var.environment
     ManagedBy   = "Terraform"
+    Project     = var.project_name
   }
 }
 
@@ -78,12 +80,13 @@ resource "aws_lambda_function" "read_recent" {
 resource "aws_cloudwatch_log_group" "ingest_lambda_logs" {
   name              = "/aws/lambda/${aws_lambda_function.ingest_log.function_name}"
   retention_in_days = 7
-  kms_key_id        = aws_kms_key.logs_key.arn
+  kms_key_id        = aws_kms_key.lambda.arn
 
   tags = {
     Name        = "simple-log-service-ingest-logs-${var.environment}"
     Environment = var.environment
     ManagedBy   = "Terraform"
+    Project     = var.project_name
   }
 }
 
@@ -91,12 +94,13 @@ resource "aws_cloudwatch_log_group" "ingest_lambda_logs" {
 resource "aws_cloudwatch_log_group" "read_recent_lambda_logs" {
   name              = "/aws/lambda/${aws_lambda_function.read_recent.function_name}"
   retention_in_days = 7
-  kms_key_id        = aws_kms_key.logs_key.arn
+  kms_key_id        = aws_kms_key.lambda.arn
 
   tags = {
     Name        = "simple-log-service-read-recent-logs-${var.environment}"
     Environment = var.environment
     ManagedBy   = "Terraform"
+    Project     = var.project_name
   }
 }
 
