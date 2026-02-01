@@ -141,16 +141,16 @@ resource "aws_iam_role_policy_attachment" "api_gateway_cloudwatch" {
 }
 
 # Lambda permissions for API Gateway
-resource "aws_lambda_permission" "ingest_api_gateway1" {
-  statement_id  = "AllowAPIGatewayInvoke"
+resource "aws_lambda_permission" "ingest_api_gateway" {
+  statement_id  = "AllowAPIGatewayInvoke1"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.ingest_log.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.log_api.execution_arn}/*/*"
 }
 
-resource "aws_lambda_permission" "read_recent_api_gateway2" {
-  statement_id  = "AllowAPIGatewayInvoke"
+resource "aws_lambda_permission" "read_recent_api_gateway" {
+  statement_id  = "AllowAPIGatewayInvoke2"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.read_recent.function_name
   principal     = "apigateway.amazonaws.com"
