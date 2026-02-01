@@ -1,5 +1,5 @@
 # Simple Log Service - API Gateway Test Script
-# Version: 2.0 - Uses Python for AWS SigV4 signed requests
+# Version: 2.1 - Fixed JSON passing to Python via file
 # Date: 2026-02-01
 
 #Requires -Version 5.1
@@ -130,7 +130,7 @@ import requests
 from requests_aws4auth import AWS4Auth
 import os
 
-def make_request(method, url, data=None):
+def make_request(method, url, data_file=None):
     # Get credentials from environment
     access_key = os.environ.get('AWS_ACCESS_KEY_ID')
     secret_key = os.environ.get('AWS_SECRET_ACCESS_KEY')
@@ -148,7 +148,12 @@ def make_request(method, url, data=None):
     
     try:
         if method == 'POST':
-            response = requests.post(url, auth=auth, json=data, headers=headers)
+            if data_file:
+                with open(data_file, 'r') as f:
+                    data = json.load(f)
+                response = requests.post(url, auth=auth, json=data, headers=headers)
+            else:
+                response = requests.post(url, auth=auth, headers=headers)
         elif method == 'GET':
             response = requests.get(url, auth=auth, headers=headers)
         else:
@@ -174,14 +179,14 @@ def make_request(method, url, data=None):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print(json.dumps({"error": "Usage: python script.py <method> <url> [data]"}))
+        print(json.dumps({"error": "Usage: python script.py <method> <url> [data_file]"}))
         sys.exit(1)
     
     method = sys.argv[1]
     url = sys.argv[2]
-    data = json.loads(sys.argv[3]) if len(sys.argv) > 3 else None
+    data_file = sys.argv[3] if len(sys.argv) > 3 else None
     
-    make_request(method, url, data)
+    make_request(method, url, data_file)
 '@
     
     [System.IO.File]::WriteAllText("$PWD\aws_sigv4_request.py", $pythonScript, [System.Text.UTF8Encoding]::new($false))
@@ -228,10 +233,13 @@ if __name__ == "__main__":
             
             $payloadJson = $logPayload | ConvertTo-Json -Compress
             
+            # Save payload to file without BOM
+            [System.IO.File]::WriteAllText("$PWD\api-payload-$i.json", $payloadJson, [System.Text.UTF8Encoding]::new($false))
+            
             Write-Info "Sending POST request $i/$TestCount to API Gateway..."
             
-            # Use Python script to make signed request
-            $pythonOutput = python aws_sigv4_request.py POST $API_ENDPOINT $payloadJson 2>&1
+            # Use Python script to make signed request, passing filename
+            $pythonOutput = python aws_sigv4_request.py POST $API_ENDPOINT "api-payload-$i.json" 2>&1
             
             if ($LASTEXITCODE -eq 0) {
                 $successCount++
@@ -308,7 +316,7 @@ if __name__ == "__main__":
             # Construct GET URL with query parameters
             $getUrl = "$API_ENDPOINT/recent?service_name=test-app&limit=10"
             
-            # Use Python script to make signed GET request
+            # Use Python script to make signed GET request (no data file needed)
             $pythonOutput = python aws_sigv4_request.py GET $getUrl 2>&1
             
             if ($LASTEXITCODE -eq 0) {
@@ -393,7 +401,7 @@ if __name__ == "__main__":
     }
     
     # Cleanup
-    Remove-Item aws_sigv4_request.py -ErrorAction SilentlyContinue
+    Remove-Item aws_sigv4_request.py, api-payload-*.json -ErrorAction SilentlyContinue
     
     if ($testFailed) {
         Write-Host "`n========================================" -ForegroundColor Red
@@ -430,7 +438,7 @@ catch {
     
     # Cleanup
     Remove-Item Env:\AWS_ACCESS_KEY_ID, Env:\AWS_SECRET_ACCESS_KEY, Env:\AWS_SESSION_TOKEN -ErrorAction SilentlyContinue
-    Remove-Item aws_sigv4_request.py -ErrorAction SilentlyContinue
+    Remove-Item aws_sigv4_request.py, api-payload-*.json -ErrorAction SilentlyContinue
     
     exit 1
 }
