@@ -1,5 +1,5 @@
 # Simple Log Service - Basic Test Script
-# Version: 1.0 - Simplified testing with clear error messages
+# Version: 1.1 - Fixed Terraform output names
 # Date: 2026-02-01
 
 #Requires -Version 5.1
@@ -62,10 +62,11 @@ try {
         Write-Info "Retrieving Terraform outputs..."
         $tfOutput = terraform output -json | ConvertFrom-Json
         
-        $API_ENDPOINT = $tfOutput.api_gateway_url.value
+        # Use the ACTUAL output names from your Terraform configuration
+        $API_ENDPOINT = $tfOutput.api_endpoint.value
         $TABLE_NAME = $tfOutput.dynamodb_table_name.value
-        $INGEST_FUNCTION = $tfOutput.ingest_lambda_name.value
-        $READ_FUNCTION = $tfOutput.read_recent_lambda_name.value
+        $INGEST_FUNCTION = $tfOutput.ingest_lambda_function_name.value
+        $READ_FUNCTION = $tfOutput.read_recent_lambda_function_name.value
         $INGEST_ROLE = $tfOutput.log_ingest_role_arn.value
         $READ_ROLE = $tfOutput.log_read_role_arn.value
         $FULL_ROLE = $tfOutput.log_full_access_role_arn.value
@@ -105,7 +106,7 @@ try {
     $successCount = 0
     for ($i = 1; $i -le $TestCount; $i++) {
         $payload = @{
-            application = "test-app"
+            service_name = "test-app"
             level = "INFO"
             message = "Test message $i"
             timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
@@ -121,6 +122,10 @@ try {
         
         if ($LASTEXITCODE -eq 0) {
             $successCount++
+            Write-Info "Test $i/$TestCount completed"
+        }
+        else {
+            Write-Fail "Test $i/$TestCount failed"
         }
     }
     
@@ -149,7 +154,7 @@ try {
     Write-Pass "Role assumed successfully"
     
     $readPayload = @{
-        application = "test-app"
+        service_name = "test-app"
         limit = 10
     } | ConvertTo-Json -Compress
     
@@ -168,6 +173,8 @@ try {
     }
     else {
         Write-Fail "Read test failed"
+        $errorContent = Get-Content "read-response.json" -Raw
+        Write-Info "Error response: $errorContent"
     }
     
     # Clear credentials
