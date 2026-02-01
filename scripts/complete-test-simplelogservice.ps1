@@ -187,7 +187,7 @@ try {
         }
     }
     catch {
-        Write-Failure "Failed to gather infrastructure information: $_"
+        Write-Failure "Failed to gather infrastructure information: $($_.Exception.Message)"
         Add-TestResult -TestName "Infrastructure Discovery" -Status "Failed" -Message $_.Exception.Message
         throw
     }
@@ -273,7 +273,7 @@ try {
                     Start-Sleep -Milliseconds 200
                 }
                 catch {
-                    Write-Failure "Ingest test $i exception: $_"
+                    Write-Failure "Ingest test $i exception: $($_.Exception.Message)"
                 }
             }
             
@@ -317,7 +317,7 @@ try {
             }
         }
         catch {
-            Write-Failure "Ingest role tests failed: $_"
+            Write-Failure "Ingest role tests failed: $($_.Exception.Message)"
             Add-TestResult -TestName "Ingest Role Tests" -Status "Failed" -Role "Ingest" -Message $_.Exception.Message
         }
         finally {
@@ -401,7 +401,7 @@ try {
                     }
                 }
                 catch {
-                    Write-Failure "Read test $i exception: $_"
+                    Write-Failure "Read test $i exception: $($_.Exception.Message)"
                 }
             }
             
@@ -447,7 +447,7 @@ try {
             }
         }
         catch {
-            Write-Failure "Read role tests failed: $_"
+            Write-Failure "Read role tests failed: $($_.Exception.Message)"
             Add-TestResult -TestName "Read Role Tests" -Status "Failed" -Role "Read" -Message $_.Exception.Message
         }
         finally {
@@ -546,7 +546,7 @@ try {
             }
         }
         catch {
-            Write-Failure "Full access role tests failed: $_"
+            Write-Failure "Full access role tests failed: $($_.Exception.Message)"
             Add-TestResult -TestName "Full Access Role Tests" -Status "Failed" -Role "FullAccess" -Message $_.Exception.Message
         }
         finally {
@@ -584,7 +584,7 @@ try {
         }
     }
     catch {
-        Write-Failure "DynamoDB verification failed: $_"
+        Write-Failure "DynamoDB verification failed: $($_.Exception.Message)"
         Add-TestResult -TestName "DynamoDB Verification" -Status "Failed" -Message $_.Exception.Message
     }
 
@@ -622,7 +622,7 @@ try {
             }
         }
         catch {
-            Write-Failure "CloudWatch Logs check failed for $logGroup: $_"
+            Write-Failure "CloudWatch Logs check failed for ${logGroup}: $($_.Exception.Message)"
         }
     }
     
@@ -720,14 +720,5 @@ try {
             }
         }
         catch {
-            Write-Failure "Performance test failed: $_"
-            Add-TestResult -TestName "Performance Test" -Status "Failed" -Message $_.Exception.Message
-        }
-        finally {
-            Clear-AWSCredentials
-        }
-    }
-
-}
-catch {
-    Write-Failure
+            Write-Failure "Performance test failed: $($_.Exception.Message)"
+            Add-TestResult -TestName
