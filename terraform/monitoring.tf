@@ -1,3 +1,4 @@
+
 # SNS topic for CloudWatch alarms
 resource "aws_sns_topic" "alarms" {
   name              = "${var.project_name}-alarms-${var.environment}"
@@ -219,7 +220,7 @@ resource "aws_cloudwatch_dashboard" "main" {
         type = "metric"
         properties = {
           metrics = [
-            ["AWS/ApiGateway", "Count", "ApiName", aws_api_gateway_rest_api.log_service.name],
+            ["AWS/ApiGateway", "Count", "ApiName", aws_api_gateway_rest_api.log_api.name],
             [".", "4XXError", ".", "."],
             [".", "5XXError", ".", "."]
           ]
