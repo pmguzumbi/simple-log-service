@@ -13,7 +13,7 @@ data "archive_file" "ingest_lambda_zip" {
 resource "aws_lambda_function" "ingest_log" {
   filename         = data.archive_file.ingest_lambda_zip.output_path
   function_name    = "simple-log-service-ingest-${var.environment}"
-  role            = aws_iam_role.lambda_execution_role.arn
+  role            = aws_iam_role.lambda_role.arn
   handler         = "index.lambda_handler"
   source_code_hash = data.archive_file.ingest_lambda_zip.output_base64sha256
   runtime         = "python3.11"
@@ -46,10 +46,10 @@ data "archive_file" "read_recent_lambda_zip" {
 }
 
 # Read Recent Lambda Function
-resource "aws_lambda_function" "read_recent_log" {
+resource "aws_lambda_function" "read_recent" {
   filename         = data.archive_file.read_recent_lambda_zip.output_path
   function_name    = "simple-log-service-read-recent-${var.environment}"
-  role            = aws_iam_role.lambda_execution_role.arn
+  role            = aws_iam_role.lambda_role.arn
   handler         = "index.lambda_handler"
   source_code_hash = data.archive_file.read_recent_lambda_zip.output_base64sha256
   runtime         = "python3.11"
@@ -89,7 +89,7 @@ resource "aws_cloudwatch_log_group" "ingest_lambda_logs" {
 
 # CloudWatch Log Group for Read Recent Lambda
 resource "aws_cloudwatch_log_group" "read_recent_lambda_logs" {
-  name              = "/aws/lambda/${aws_lambda_function.read_recent_log.function_name}"
+  name              = "/aws/lambda/${aws_lambda_function.read_recent.function_name}"
   retention_in_days = 7
   kms_key_id        = aws_kms_key.logs_key.arn
 
@@ -113,7 +113,8 @@ resource "aws_lambda_permission" "api_gateway_ingest" {
 resource "aws_lambda_permission" "api_gateway_read_recent" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.read_recent_log.function_name
+  function_name = aws_lambda_function.read_recent.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.log_api.execution_arn}/*/*"
 }
+
