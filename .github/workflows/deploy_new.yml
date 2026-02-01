@@ -1,4 +1,4 @@
-```yaml
+
 
 name: Deploy Simple Log Service
 
@@ -256,4 +256,3 @@ jobs:
         run: |
           echo "Deployed to ${{ github.event.inputs.environment }} environment"
 
-```
