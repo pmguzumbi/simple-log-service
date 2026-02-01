@@ -110,7 +110,7 @@ resource "aws_lambda_permission" "api_gateway_ingest" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.ingest_log.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.log_api.execution_arn}/*/*"
+  source_arn    = "${aws_api_gateway_rest_api.log_service.execution_arn}/*/*"
 }
 
 # Lambda permission for API Gateway to invoke read_recent function
@@ -119,6 +119,6 @@ resource "aws_lambda_permission" "api_gateway_read_recent" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.read_recent.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.log_api.execution_arn}/*/*"
+  source_arn    = "${aws_api_gateway_rest_api.log_service.execution_arn}/*/*"
 }
 
