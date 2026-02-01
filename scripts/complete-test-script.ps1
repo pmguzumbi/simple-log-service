@@ -1,5 +1,3 @@
-```powershell
-
 # Simple Log Service - Basic Test Script with External ID Support
 # Version: 1.6 - Fixed UTF-8 encoding issue (no BOM)
 # Date: 2026-02-01
@@ -402,5 +400,3 @@ catch {
     
     exit 1
 }
-
-```
