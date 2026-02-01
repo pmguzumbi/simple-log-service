@@ -1,4 +1,3 @@
-
 # Lambda Functions Configuration
 # Defines the ingest and read_recent Lambda functions with their configurations
 
@@ -80,7 +79,7 @@ resource "aws_lambda_function" "read_recent" {
 resource "aws_cloudwatch_log_group" "ingest_lambda_logs" {
   name              = "/aws/lambda/${aws_lambda_function.ingest_log.function_name}"
   retention_in_days = 7
-  kms_key_id        = aws_kms_key.lambda.arn
+  kms_key_id        = aws_kms_key.cloudwatch.arn
 
   tags = {
     Name        = "simple-log-service-ingest-logs-${var.environment}"
@@ -94,7 +93,7 @@ resource "aws_cloudwatch_log_group" "ingest_lambda_logs" {
 resource "aws_cloudwatch_log_group" "read_recent_lambda_logs" {
   name              = "/aws/lambda/${aws_lambda_function.read_recent.function_name}"
   retention_in_days = 7
-  kms_key_id        = aws_kms_key.lambda.arn
+  kms_key_id        = aws_kms_key.cloudwatch.arn
 
   tags = {
     Name        = "simple-log-service-read-recent-logs-${var.environment}"
