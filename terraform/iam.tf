@@ -4,6 +4,9 @@
 # Get current AWS account information
 data "aws_caller_identity" "current" {}
 
+# Get current AWS region
+data "aws_region" "current" {}
+
 # ============================================================================
 # LOG INGEST ROLE (Write-Only Access)
 # ============================================================================
@@ -381,13 +384,6 @@ resource "aws_iam_role_policy" "read_lambda_policy" {
 }
 
 # ============================================================================
-# DATA SOURCES
-# ============================================================================
-
-# Get current AWS region
-data "aws_region" "current" {}
-
-# ============================================================================
 # OUTPUTS
 # ============================================================================
 
@@ -415,3 +411,4 @@ output "read_lambda_role_arn" {
   description = "ARN of the read Lambda execution role"
   value       = aws_iam_role.read_lambda_role.arn
 }
+
