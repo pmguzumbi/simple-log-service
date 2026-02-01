@@ -1,7 +1,7 @@
 # Lambda function for ingesting logs
 data "archive_file" "ingest_log" {
   type        = "zip"
-  source_dir  = "${path.module}/../lambda/ingest_log"
+  source_dir  = "${path.module}/../lambda/ingest"
   output_path = "${path.module}/.terraform/archive_files/ingest_log.zip"
 }
 
