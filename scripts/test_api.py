@@ -61,8 +61,7 @@ def sign_request(method, url, body=None, params=None):
 
 def test_ingest_log():
     """Test log ingestion endpoint"""
-    print("
-=== Testing Log Ingestion ===")
+    print("=== Testing Log Ingestion ===")
     
     endpoint = get_api_endpoint()
     url = f"{endpoint}/logs"
