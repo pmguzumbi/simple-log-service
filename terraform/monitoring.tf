@@ -106,7 +106,6 @@ resource "aws_cloudwatch_metric_alarm" "read_recent_throttles" {
   tags = {
     Name        = "${var.project_name}-read-recent-throttles-alarm-${var.environment}"
     Environment = var.environment
-    Project     = var.environment
     Project     = var.project_name
   }
 }
