@@ -11,12 +11,10 @@ data "aws_region" "current" {}
 # LOG INGEST ROLE (Write-Only Access)
 # ============================================================================
 
-# IAM role for log ingestion - allows writing logs to DynamoDB
 resource "aws_iam_role" "log_ingest_role" {
   name        = "simple-log-service-log-ingest-role-${var.environment}"
   description = "Role for ingesting logs into the Simple Log Service"
 
-  # Trust policy - allows your current AWS account root to assume this role
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -50,7 +48,7 @@ resource "aws_iam_role" "log_ingest_role" {
   }
 }
 
-# Policy for log ingest role - write-only access to DynamoDB
+# Policy for log ingest role - write-only access to DynamoDB AND Lambda invoke
 resource "aws_iam_role_policy" "log_ingest_policy" {
   name = "simple-log-service-log-ingest-policy-${var.environment}"
   role = aws_iam_role.log_ingest_role.id
@@ -64,6 +62,13 @@ resource "aws_iam_role_policy" "log_ingest_policy" {
           "dynamodb:PutItem"
         ]
         Resource = aws_dynamodb_table.logs.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "lambda:InvokeFunction"
+        ]
+        Resource = aws_lambda_function.ingest_log.arn
       },
       {
         Effect = "Allow"
@@ -90,12 +95,10 @@ resource "aws_iam_role_policy" "log_ingest_policy" {
 # LOG READ ROLE (Read-Only Access)
 # ============================================================================
 
-# IAM role for reading logs - allows querying logs from DynamoDB
 resource "aws_iam_role" "log_read_role" {
   name        = "simple-log-service-log-read-role-${var.environment}"
   description = "Role for reading logs from the Simple Log Service"
 
-  # Trust policy - allows your current AWS account root to assume this role
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -129,7 +132,7 @@ resource "aws_iam_role" "log_read_role" {
   }
 }
 
-# Policy for log read role - read-only access to DynamoDB
+# Policy for log read role - read-only access to DynamoDB AND Lambda invoke
 resource "aws_iam_role_policy" "log_read_policy" {
   name = "simple-log-service-log-read-policy-${var.environment}"
   role = aws_iam_role.log_read_role.id
@@ -148,6 +151,13 @@ resource "aws_iam_role_policy" "log_read_policy" {
           aws_dynamodb_table.logs.arn,
           "${aws_dynamodb_table.logs.arn}/index/*"
         ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "lambda:InvokeFunction"
+        ]
+        Resource = aws_lambda_function.read_recent.arn
       },
       {
         Effect = "Allow"
@@ -173,12 +183,10 @@ resource "aws_iam_role_policy" "log_read_policy" {
 # LOG FULL ACCESS ROLE (Read + Write Access)
 # ============================================================================
 
-# IAM role for full access - allows both reading and writing logs
 resource "aws_iam_role" "log_full_access_role" {
   name        = "simple-log-service-log-full-access-role-${var.environment}"
   description = "Role for full access to the Simple Log Service"
 
-  # Trust policy - allows your current AWS account root to assume this role
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -212,7 +220,7 @@ resource "aws_iam_role" "log_full_access_role" {
   }
 }
 
-# Policy for full access role - read and write access to DynamoDB
+# Policy for full access role - read and write access to DynamoDB AND Lambda invoke
 resource "aws_iam_role_policy" "log_full_access_policy" {
   name = "simple-log-service-log-full-access-policy-${var.environment}"
   role = aws_iam_role.log_full_access_role.id
@@ -233,6 +241,16 @@ resource "aws_iam_role_policy" "log_full_access_policy" {
         Resource = [
           aws_dynamodb_table.logs.arn,
           "${aws_dynamodb_table.logs.arn}/index/*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "lambda:InvokeFunction"
+        ]
+        Resource = [
+          aws_lambda_function.ingest_log.arn,
+          aws_lambda_function.read_recent.arn
         ]
       },
       {
@@ -260,7 +278,6 @@ resource "aws_iam_role_policy" "log_full_access_policy" {
 # LAMBDA EXECUTION ROLES
 # ============================================================================
 
-# IAM role for ingest Lambda function
 resource "aws_iam_role" "ingest_lambda_role" {
   name        = "simple-log-service-ingest-lambda-role-${var.environment}"
   description = "Execution role for the log ingest Lambda function"
@@ -286,7 +303,6 @@ resource "aws_iam_role" "ingest_lambda_role" {
   }
 }
 
-# Policy for ingest Lambda execution role
 resource "aws_iam_role_policy" "ingest_lambda_policy" {
   name = "simple-log-service-ingest-lambda-policy-${var.environment}"
   role = aws_iam_role.ingest_lambda_role.id
@@ -325,7 +341,6 @@ resource "aws_iam_role_policy" "ingest_lambda_policy" {
   })
 }
 
-# IAM role for read Lambda function
 resource "aws_iam_role" "read_lambda_role" {
   name        = "simple-log-service-read-lambda-role-${var.environment}"
   description = "Execution role for the log read Lambda function"
@@ -351,7 +366,6 @@ resource "aws_iam_role" "read_lambda_role" {
   }
 }
 
-# Policy for read Lambda execution role
 resource "aws_iam_role_policy" "read_lambda_policy" {
   name = "simple-log-service-read-lambda-policy-${var.environment}"
   role = aws_iam_role.read_lambda_role.id
@@ -421,3 +435,4 @@ output "read_lambda_role_arn" {
   description = "ARN of the read Lambda execution role"
   value       = aws_iam_role.read_lambda_role.arn
 }
+
