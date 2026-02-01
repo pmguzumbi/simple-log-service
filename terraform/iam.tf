@@ -1,4 +1,3 @@
-
 # iam.tf - IAM roles and policies for Simple Log Service
 # This file defines IAM roles with proper trust relationships and API Gateway permissions
 
@@ -76,7 +75,7 @@ resource "aws_iam_role_policy" "log_ingest_policy" {
         Action = [
           "execute-api:Invoke"
         ]
-        Resource = "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.log_service.id}/${var.environment}/POST/logs"
+        Resource = "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.log_api.id}/${var.environment}/POST/logs"
       },
       {
         Effect = "Allow"
@@ -172,7 +171,7 @@ resource "aws_iam_role_policy" "log_read_policy" {
         Action = [
           "execute-api:Invoke"
         ]
-        Resource = "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.log_service.id}/${var.environment}/GET/logs/recent"
+        Resource = "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.log_api.id}/${var.environment}/GET/logs/recent"
       },
       {
         Effect = "Allow"
@@ -273,7 +272,7 @@ resource "aws_iam_role_policy" "log_full_access_policy" {
         Action = [
           "execute-api:Invoke"
         ]
-        Resource = "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.log_service.id}/${var.environment}/*/*"
+        Resource = "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.log_api.id}/${var.environment}/*/*"
       },
       {
         Effect = "Allow"
@@ -357,7 +356,15 @@ resource "aws_iam_role_policy" "ingest_lambda_policy" {
           "logs:CreateLogStream",
           "logs:PutLogEvents"
         ]
-        Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.project_name}-ingest-${var.environment}:*"
+        Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/simple-log-service-ingest-${var.environment}:*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "xray:PutTraceSegments",
+          "xray:PutTelemetryRecords"
+        ]
+        Resource = "*"
       }
     ]
   })
@@ -423,7 +430,15 @@ resource "aws_iam_role_policy" "read_lambda_policy" {
           "logs:CreateLogStream",
           "logs:PutLogEvents"
         ]
-        Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.project_name}-read-recent-${var.environment}:*"
+        Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/simple-log-service-read-recent-${var.environment}:*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "xray:PutTraceSegments",
+          "xray:PutTelemetryRecords"
+        ]
+        Resource = "*"
       }
     ]
   })
