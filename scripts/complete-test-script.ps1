@@ -51,22 +51,22 @@ function Write-TestStep {
 
 function Write-Success {
     param([string]$Message)
-    Write-Host "  ✓ $Message" -ForegroundColor Green
+    Write-Host "  Success: $Message" -ForegroundColor Green
 }
 
 function Write-Failure {
     param([string]$Message)
-    Write-Host "  ✗ $Message" -ForegroundColor Red
+    Write-Host "  Failed: $Message" -ForegroundColor Red
 }
 
 function Write-Info {
     param([string]$Message)
-    Write-Host "  ℹ $Message" -ForegroundColor Blue
+    Write-Host "  Info: $Message" -ForegroundColor Blue
 }
 
 function Write-Warning {
     param([string]$Message)
-    Write-Host "  ⚠ $Message" -ForegroundColor Yellow
+    Write-Host "  Warning: $Message" -ForegroundColor Yellow
 }
 
 # Initialize test results tracking
@@ -210,7 +210,6 @@ try {
         Write-TestStep "Step 2: Testing Ingest Role (Write Only)"
         
         try {
-            # Assume ingest role
             Write-Info "Assuming ingest role..."
             $ingestCreds = aws sts assume-role `
                 --role-arn $INGEST_ROLE_ARN `
@@ -228,7 +227,6 @@ try {
             Write-Success "Successfully assumed ingest role"
             Write-Info "Session expires: $($ingestCredentials.Credentials.Expiration)"
             
-            # Verify identity
             $identity = aws sts get-caller-identity --output json | ConvertFrom-Json
             Write-Success "Current identity: $($identity.Arn)"
             
@@ -238,13 +236,12 @@ try {
                 AssumedIdentity = $identity.Arn
             }
             
-            # Test ingest Lambda invocations
             Write-Info "Testing ingest Lambda invocations..."
             $ingestSuccessCount = 0
             
             for ($i = 1; $i -le $TestIterations; $i++) {
                 try {
-                    $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                    $timestamp = (Get-Date).ToUniversalTime().ToString("[MAC_ADDRESS]")
                     $payload = @{
                         application = "ingest-role-test"
                         level = @("INFO", "WARN", "ERROR")[(Get-Random -Minimum 0 -Maximum 3)]
@@ -267,7 +264,7 @@ try {
                         }
                     }
                     else {
-                        Write-Failure "Ingest test $i failed: $response"
+                        Write-Failure "Ingest test $i failed"
                     }
                     
                     Start-Sleep -Milliseconds 200
@@ -286,7 +283,6 @@ try {
                 Add-TestResult -TestName "Ingest Role - Write Tests" -Status "Failed" -Role "Ingest" -Message "Only $ingestSuccessCount/$TestIterations successful"
             }
             
-            # Test that read access is denied
             Write-Info "Verifying read access is denied..."
             try {
                 $readPayload = @{
@@ -325,7 +321,6 @@ try {
         }
     }
 
-    # Wait for eventual consistency
     if ($TestRole -eq "All") {
         Write-Info "Waiting 3 seconds for DynamoDB eventual consistency..."
         Start-Sleep -Seconds 3
@@ -338,7 +333,6 @@ try {
         Write-TestStep "Step 3: Testing Read Role (Read Only)"
         
         try {
-            # Assume read role
             Write-Info "Assuming read role..."
             $readCreds = aws sts assume-role `
                 --role-arn $READ_ROLE_ARN `
@@ -356,7 +350,6 @@ try {
             Write-Success "Successfully assumed read role"
             Write-Info "Session expires: $($readCredentials.Credentials.Expiration)"
             
-            # Verify identity
             $identity = aws sts get-caller-identity --output json | ConvertFrom-Json
             Write-Success "Current identity: $($identity.Arn)"
             
@@ -366,7 +359,6 @@ try {
                 AssumedIdentity = $identity.Arn
             }
             
-            # Test read Lambda invocations
             Write-Info "Testing read Lambda invocations..."
             $readSuccessCount = 0
             $totalLogsRetrieved = 0
@@ -397,7 +389,7 @@ try {
                         }
                     }
                     else {
-                        Write-Failure "Read test $i failed: $response"
+                        Write-Failure "Read test $i failed"
                     }
                 }
                 catch {
@@ -414,14 +406,13 @@ try {
                 Add-TestResult -TestName "Read Role - Read Tests" -Status "Failed" -Role "Read" -Message "Only $readSuccessCount/$TestIterations successful"
             }
             
-            # Test that write access is denied
             Write-Info "Verifying write access is denied..."
             try {
                 $writePayload = @{
                     application = "read-role-test"
                     level = "INFO"
                     message = "This should fail"
-                    timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                    timestamp = (Get-Date).ToUniversalTime().ToString("[MAC_ADDRESS]")
                 } | ConvertTo-Json -Compress
                 
                 $writePayload | Out-File -FilePath "test-write-denied.json" -Encoding utf8 -NoNewline
@@ -462,7 +453,6 @@ try {
         Write-TestStep "Step 4: Testing Full Access Role (Read + Write)"
         
         try {
-            # Assume full access role
             Write-Info "Assuming full access role..."
             $fullCreds = aws sts assume-role `
                 --role-arn $FULL_ACCESS_ROLE_ARN `
@@ -480,7 +470,6 @@ try {
             Write-Success "Successfully assumed full access role"
             Write-Info "Session expires: $($fullCredentials.Credentials.Expiration)"
             
-            # Verify identity
             $identity = aws sts get-caller-identity --output json | ConvertFrom-Json
             Write-Success "Current identity: $($identity.Arn)"
             
@@ -490,13 +479,12 @@ try {
                 AssumedIdentity = $identity.Arn
             }
             
-            # Test write access
             Write-Info "Testing write access..."
             $writePayload = @{
                 application = "full-access-test"
                 level = "INFO"
                 message = "Full access role write test"
-                timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                timestamp = (Get-Date).ToUniversalTime().ToString("[MAC_ADDRESS]")
             } | ConvertTo-Json -Compress
             
             $writePayload | Out-File -FilePath "test-full-write.json" -Encoding utf8 -NoNewline
@@ -512,14 +500,12 @@ try {
                 Add-TestResult -TestName "Full Access Role - Write Test" -Status "Passed" -Role "FullAccess"
             }
             else {
-                Write-Failure "Write access failed: $writeResponse"
-                Add-TestResult -TestName "Full Access Role - Write Test" -Status "Failed" -Role "FullAccess" -Message $writeResponse
+                Write-Failure "Write access failed"
+                Add-TestResult -TestName "Full Access Role - Write Test" -Status "Failed" -Role "FullAccess"
             }
             
-            # Wait for consistency
             Start-Sleep -Seconds 2
             
-            # Test read access
             Write-Info "Testing read access..."
             $readPayload = @{
                 application = "full-access-test"
@@ -541,8 +527,8 @@ try {
                 Add-TestResult -TestName "Full Access Role - Read Test" -Status "Passed" -Role "FullAccess" -Message "$logCount logs retrieved"
             }
             else {
-                Write-Failure "Read access failed: $readResponse"
-                Add-TestResult -TestName "Full Access Role - Read Test" -Status "Failed" -Role "FullAccess" -Message $readResponse
+                Write-Failure "Read access failed"
+                Add-TestResult -TestName "Full Access Role - Read Test" -Status "Failed" -Role "FullAccess"
             }
         }
         catch {
@@ -560,15 +546,12 @@ try {
     Write-TestStep "Step 5: Verifying DynamoDB Table"
     
     try {
-        $tableInfo = aws dynamodb describe-table `
-            --table-name $TABLE_NAME `
-            --output json | ConvertFrom-Json
+        $tableInfo = aws dynamodb describe-table --table-name $TABLE_NAME --output json | ConvertFrom-Json
         
         Write-Success "Table Status: $($tableInfo.Table.TableStatus)"
         Write-Success "Item Count: $($tableInfo.Table.ItemCount)"
         Write-Success "Table Size: $([math]::Round($tableInfo.Table.TableSizeBytes / 1KB, 2)) KB"
         
-        # Verify encryption
         if ($tableInfo.Table.SSEDescription.Status -eq "ENABLED") {
             Write-Success "Encryption at rest: ENABLED"
             Write-Info "KMS Key: $($tableInfo.Table.SSEDescription.KMSMasterKeyArn)"
@@ -593,19 +576,11 @@ try {
     # ========================================================================
     Write-TestStep "Step 6: Checking CloudWatch Logs"
     
-    $logGroups = @(
-        "/aws/lambda/$INGEST_FUNCTION",
-        "/aws/lambda/$READ_FUNCTION"
-    )
+    $logGroups = @("/aws/lambda/$INGEST_FUNCTION", "/aws/lambda/$READ_FUNCTION")
     
     foreach ($logGroup in $logGroups) {
         try {
-            $streams = aws logs describe-log-streams `
-                --log-group-name $logGroup `
-                --order-by LastEventTime `
-                --descending `
-                --max-items 1 `
-                --output json 2>&1
+            $streams = aws logs describe-log-streams --log-group-name $logGroup --order-by LastEventTime --descending --max-items 1 --output json 2>&1
             
             if ($LASTEXITCODE -eq 0) {
                 $streamInfo = $streams | ConvertFrom-Json
@@ -622,7 +597,7 @@ try {
             }
         }
         catch {
-            Write-Failure "CloudWatch Logs check failed for ${logGroup}: $($_.Exception.Message)"
+            Write-Failure "CloudWatch Logs check failed for log group: $($_.Exception.Message)"
         }
     }
     
@@ -633,7 +608,6 @@ try {
     # ========================================================================
     Write-TestStep "Step 7: Verifying Security Configuration"
     
-    # Check API Gateway uses HTTPS
     if ($API_ENDPOINT -match "^https://") {
         Write-Success "API Gateway uses HTTPS (encryption in transit)"
     }
@@ -641,7 +615,6 @@ try {
         Write-Failure "API Gateway not using HTTPS!"
     }
     
-    # Check KMS encryption
     $kmsKeyArn = $tableInfo.Table.SSEDescription.KMSMasterKeyArn
     if ($kmsKeyArn -match "arn:aws:kms") {
         Write-Success "Using customer-managed KMS key"
@@ -663,13 +636,7 @@ try {
         Write-TestStep "Step 8: Performance Testing"
         
         try {
-            # Assume full access role for performance test
-            $perfCreds = aws sts assume-role `
-                --role-arn $FULL_ACCESS_ROLE_ARN `
-                --role-session-name "perf-test-$(Get-Date -Format 'yyyyMMddHHmmss')" `
-                --duration-seconds 3600 `
-                --output json | ConvertFrom-Json
-            
+            $perfCreds = aws sts assume-role --role-arn $FULL_ACCESS_ROLE_ARN --role-session-name "perf-test-$(Get-Date -Format 'yyyyMMddHHmmss')" --duration-seconds 3600 --output json | ConvertFrom-Json
             Set-AWSCredentials -Credentials $perfCreds
             
             $perfIterations = 50
@@ -683,24 +650,15 @@ try {
                     application = "perf-test"
                     level = "INFO"
                     message = "Performance test message $i"
-                    timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                    timestamp = (Get-Date).ToUniversalTime().ToString("[MAC_ADDRESS]")
                 } | ConvertTo-Json -Compress
                 
                 $payload | Out-File -FilePath "perf-test.json" -Encoding utf8 -NoNewline
                 
-                $response = aws lambda invoke `
-                    --function-name $INGEST_FUNCTION `
-                    --payload file://perf-test.json `
-                    --cli-binary-format raw-in-base64-out `
-                    "perf-response.json" 2>&1
+                $response = aws lambda invoke --function-name $INGEST_FUNCTION --payload file://perf-test.json --cli-binary-format raw-in-base64-out "perf-response.json" 2>&1
                 
-                if ($LASTEXITCODE -eq 0) {
-                    $successCount++
-                }
-                
-                if ($i % 10 -eq 0) {
-                    Write-Info "Completed $i/$perfIterations requests"
-                }
+                if ($LASTEXITCODE -eq 0) { $successCount++ }
+                if ($i % 10 -eq 0) { Write-Info "Completed $i/$perfIterations requests" }
             }
             
             $endTime = Get-Date
@@ -721,4 +679,29 @@ try {
         }
         catch {
             Write-Failure "Performance test failed: $($_.Exception.Message)"
-            Add-TestResult -TestName
+            Add-TestResult -TestName "Performance Test" -Status "Failed" -Message $_.Exception.Message
+        }
+        finally {
+            Clear-AWSCredentials
+        }
+    }
+}
+catch {
+    Write-Failure "Critical test failure: $($_.Exception.Message)"
+    Write-Host $_.ScriptStackTrace -ForegroundColor Red
+}
+finally {
+    if (-not $SkipCleanup) {
+        Write-TestStep "Cleaning up test files..."
+        Remove-Item test-*.json, *-response-*.json, perf-*.json -ErrorAction SilentlyContinue
+        Write-Success "Cleanup completed"
+    }
+    
+    Clear-AWSCredentials
+    
+    Write-TestHeader "Test Execution Summary"
+    
+    $duration = (Get-Date) - $script:TestResults.StartTime
+    
+    Write-Host "`nTest Results:" -ForegroundColor Cyan
+    Write-Host "  Total Tests: $($script:TestResults.Tests.Count
