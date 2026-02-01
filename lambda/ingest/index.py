@@ -1,4 +1,3 @@
-
 import json
 import os
 import uuid
@@ -17,6 +16,7 @@ def get_dynamodb_table():
 def lambda_handler(event, context):
     """
     Lambda handler for ingesting log entries
+    Handles both API Gateway events and direct Lambda invocations
     
     Expected body format:
     {
@@ -28,8 +28,13 @@ def lambda_handler(event, context):
     }
     """
     try:
-        # Parse request body
-        body = json.loads(event.get('body', '{}'))
+        # Parse request body - handle both API Gateway and direct invocation
+        if 'body' in event and isinstance(event.get('body'), str):
+            # API Gateway wraps the payload in 'body' as a JSON string
+            body = json.loads(event['body'])
+        else:
+            # Direct Lambda invocation - payload is directly in event
+            body = event
         
         # Validate required fields
         required_fields = ['service_name', 'log_type', 'level', 'message']
@@ -86,4 +91,3 @@ def lambda_handler(event, context):
             'statusCode': 500,
             'body': json.dumps({'error': 'Internal server error'})
         }
-
