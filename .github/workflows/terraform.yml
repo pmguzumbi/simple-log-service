@@ -258,4 +258,3 @@ jobs:
       - name: Deployment notification
         run: |
           echo "Deployed to ${{ github.event.inputs.environment }} environment"
-
