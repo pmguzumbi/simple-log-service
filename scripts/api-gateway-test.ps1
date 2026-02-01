@@ -1,5 +1,5 @@
 # Simple Log Service - API Gateway Test Script
-# Version: 1.0 - Tests API Gateway with IAM authentication
+# Version: 2.0 - Uses Python for AWS SigV4 signed requests
 # Date: 2026-02-01
 
 #Requires -Version 5.1
@@ -34,6 +34,33 @@ $testFailed = $false
 try {
     # STEP 1: Check Prerequisites
     Write-Step "Checking Prerequisites"
+    
+    # Check Python installation
+    try {
+        $pythonVersion = python --version 2>&1
+        Write-Pass "Python installed: $pythonVersion"
+    }
+    catch {
+        Write-Fail "Python not found - required for AWS SigV4 signing"
+        Write-Info "Install Python from: https://www.python.org/downloads/"
+        exit 1
+    }
+    
+    # Check if requests and requests-aws4auth are installed
+    Write-Info "Checking Python dependencies..."
+    $pipList = pip list 2>&1 | Out-String
+    
+    if ($pipList -notmatch "requests") {
+        Write-Info "Installing requests library..."
+        pip install requests 2>&1 | Out-Null
+    }
+    
+    if ($pipList -notmatch "requests-aws4auth") {
+        Write-Info "Installing requests-aws4auth library..."
+        pip install requests-aws4auth 2>&1 | Out-Null
+    }
+    
+    Write-Pass "Python dependencies ready"
     
     if (-not (Test-Path $TerraformPath)) {
         Write-Fail "Terraform directory not found: $TerraformPath"
@@ -95,6 +122,71 @@ try {
     Write-Info "  Ingest: $INGEST_EXTERNAL_ID"
     Write-Info "  Read: $READ_EXTERNAL_ID"
     
+    # Create Python helper script for AWS SigV4 signed requests
+    $pythonScript = @'
+import sys
+import json
+import requests
+from requests_aws4auth import AWS4Auth
+import os
+
+def make_request(method, url, data=None):
+    # Get credentials from environment
+    access_key = os.environ.get('AWS_ACCESS_KEY_ID')
+    secret_key = os.environ.get('AWS_SECRET_ACCESS_KEY')
+    session_token = os.environ.get('AWS_SESSION_TOKEN')
+    region = 'us-east-1'
+    
+    if not access_key or not secret_key:
+        print(json.dumps({"error": "AWS credentials not found in environment"}))
+        sys.exit(1)
+    
+    # Create AWS4Auth instance
+    auth = AWS4Auth(access_key, secret_key, region, 'execute-api', session_token=session_token)
+    
+    headers = {'Content-Type': 'application/json'}
+    
+    try:
+        if method == 'POST':
+            response = requests.post(url, auth=auth, json=data, headers=headers)
+        elif method == 'GET':
+            response = requests.get(url, auth=auth, headers=headers)
+        else:
+            print(json.dumps({"error": f"Unsupported method: {method}"}))
+            sys.exit(1)
+        
+        result = {
+            "status_code": response.status_code,
+            "headers": dict(response.headers),
+            "body": response.text
+        }
+        
+        print(json.dumps(result))
+        
+        if response.status_code >= 400:
+            sys.exit(1)
+        else:
+            sys.exit(0)
+            
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+        sys.exit(1)
+
+if __name__ == "__main__":
+    if len(sys.argv) < 3:
+        print(json.dumps({"error": "Usage: python script.py <method> <url> [data]"}))
+        sys.exit(1)
+    
+    method = sys.argv[1]
+    url = sys.argv[2]
+    data = json.loads(sys.argv[3]) if len(sys.argv) > 3 else None
+    
+    make_request(method, url, data)
+'@
+    
+    [System.IO.File]::WriteAllText("$PWD\aws_sigv4_request.py", $pythonScript, [System.Text.UTF8Encoding]::new($false))
+    Write-Pass "Created Python helper script for AWS SigV4 signing"
+    
     # STEP 3: Test POST /logs (Ingest) with IAM Authentication
     Write-Step "Testing POST /logs (Ingest Endpoint)"
     
@@ -132,54 +224,43 @@ try {
                 level = "INFO"
                 message = "API Gateway test message $i"
                 timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
-            } | ConvertTo-Json -Compress
+            }
             
-            # Save payload without BOM
-            [System.IO.File]::WriteAllText("$PWD\api-ingest-payload-$i.json", $logPayload, [System.Text.UTF8Encoding]::new($false))
+            $payloadJson = $logPayload | ConvertTo-Json -Compress
             
             Write-Info "Sending POST request $i/$TestCount to API Gateway..."
             
-            # Use AWS CLI to make signed API Gateway request
-            $apiOutput = aws apigatewayv2 invoke `
-                --api-id "v22n8t8394" `
-                --stage-name "prod" `
-                --request-body "file://api-ingest-payload-$i.json" `
-                --http-method POST `
-                --resource-path "/logs" `
-                "api-response-$i.json" 2>&1
+            # Use Python script to make signed request
+            $pythonOutput = python aws_sigv4_request.py POST $API_ENDPOINT $payloadJson 2>&1
             
             if ($LASTEXITCODE -eq 0) {
                 $successCount++
                 Write-Pass "POST request $i/$TestCount successful"
                 
-                if (Test-Path "api-response-$i.json") {
-                    $response = Get-Content "api-response-$i.json" -Raw
-                    Write-Info "Response: $response"
+                try {
+                    $response = $pythonOutput | ConvertFrom-Json
+                    Write-Info "Status Code: $($response.status_code)"
+                    Write-Info "Response: $($response.body)"
+                }
+                catch {
+                    Write-Info "Response: $pythonOutput"
                 }
             }
             else {
                 Write-Fail "POST request $i/$TestCount failed"
-                Write-Info "Error: $apiOutput"
                 
-                # Try alternative method using curl with AWS SigV4
-                Write-Info "Attempting with curl and AWS SigV4 signing..."
-                
-                $curlOutput = aws --region us-east-1 `
-                    curl `
-                    --request POST `
-                    --data "@api-ingest-payload-$i.json" `
-                    "$API_ENDPOINT" 2>&1
-                
-                if ($LASTEXITCODE -eq 0) {
-                    $successCount++
-                    Write-Pass "POST request $i/$TestCount successful (via curl)"
-                    Write-Info "Response: $curlOutput"
+                try {
+                    $errorResponse = $pythonOutput | ConvertFrom-Json
+                    Write-Info "Error: $($errorResponse.error)"
+                    if ($errorResponse.status_code) {
+                        Write-Info "Status Code: $($errorResponse.status_code)"
+                        Write-Info "Response Body: $($errorResponse.body)"
+                    }
                 }
-                else {
-                    Write-Fail "POST request $i/$TestCount failed (via curl)"
-                    Write-Info "Curl error: $curlOutput"
-                    $testFailed = $true
+                catch {
+                    Write-Info "Error output: $pythonOutput"
                 }
+                $testFailed = $true
             }
         }
         
@@ -227,17 +308,17 @@ try {
             # Construct GET URL with query parameters
             $getUrl = "$API_ENDPOINT/recent?service_name=test-app&limit=10"
             
-            # Use AWS CLI curl with SigV4 signing
-            $getOutput = aws --region us-east-1 `
-                curl `
-                --request GET `
-                "$getUrl" 2>&1
+            # Use Python script to make signed GET request
+            $pythonOutput = python aws_sigv4_request.py GET $getUrl 2>&1
             
             if ($LASTEXITCODE -eq 0) {
                 Write-Pass "GET /logs/recent successful"
                 
                 try {
-                    $result = $getOutput | ConvertFrom-Json
+                    $response = $pythonOutput | ConvertFrom-Json
+                    Write-Info "Status Code: $($response.status_code)"
+                    
+                    $result = $response.body | ConvertFrom-Json
                     $logCount = if ($result.logs) { $result.logs.Count } else { 0 }
                     Write-Pass "Retrieved $logCount logs"
                     
@@ -253,12 +334,23 @@ try {
                     }
                 }
                 catch {
-                    Write-Info "Response: $getOutput"
+                    Write-Info "Response: $pythonOutput"
                 }
             }
             else {
                 Write-Fail "GET /logs/recent failed"
-                Write-Info "Error: $getOutput"
+                
+                try {
+                    $errorResponse = $pythonOutput | ConvertFrom-Json
+                    Write-Info "Error: $($errorResponse.error)"
+                    if ($errorResponse.status_code) {
+                        Write-Info "Status Code: $($errorResponse.status_code)"
+                        Write-Info "Response Body: $($errorResponse.body)"
+                    }
+                }
+                catch {
+                    Write-Info "Error output: $pythonOutput"
+                }
                 $testFailed = $true
             }
             
@@ -283,7 +375,7 @@ try {
             
             $scanOutput = aws dynamodb scan `
                 --table-name $TABLE_NAME `
-                --limit 3 `
+                --limit 5 `
                 --output json 2>&1
             
             if ($LASTEXITCODE -eq 0) {
@@ -293,7 +385,7 @@ try {
                 if ($scanResult.Items.Count -gt 0) {
                     Write-Info "Sample items:"
                     foreach ($item in $scanResult.Items) {
-                        Write-Info "  - Service: $($item.service_name.S), Level: $($item.level.S), Timestamp: $($item.timestamp.S)"
+                        Write-Info "  - Service: $($item.service_name.S), Level: $($item.level.S), Message: $($item.message.S)"
                     }
                 }
             }
@@ -301,7 +393,7 @@ try {
     }
     
     # Cleanup
-    Remove-Item api-*.json -ErrorAction SilentlyContinue
+    Remove-Item aws_sigv4_request.py -ErrorAction SilentlyContinue
     
     if ($testFailed) {
         Write-Host "`n========================================" -ForegroundColor Red
@@ -311,11 +403,11 @@ try {
         Write-Host ""
         
         Write-Info "Troubleshooting tips:"
-        Write-Info "1. Verify API Gateway resource policy allows IAM authentication"
-        Write-Info "2. Check API Gateway method authorization is set to AWS_IAM"
+        Write-Info "1. Verify API Gateway method authorization is set to AWS_IAM"
+        Write-Info "2. Check IAM roles have execute-api:Invoke permission"
         Write-Info "3. Ensure Lambda integration is configured correctly"
         Write-Info "4. Review CloudWatch logs for API Gateway and Lambda"
-        Write-Info "5. Verify IAM roles have execute-api:Invoke permission"
+        Write-Info "5. Verify API Gateway resource policy allows IAM authentication"
         
         exit 1
     }
@@ -338,7 +430,7 @@ catch {
     
     # Cleanup
     Remove-Item Env:\AWS_ACCESS_KEY_ID, Env:\AWS_SECRET_ACCESS_KEY, Env:\AWS_SESSION_TOKEN -ErrorAction SilentlyContinue
-    Remove-Item api-*.json -ErrorAction SilentlyContinue
+    Remove-Item aws_sigv4_request.py -ErrorAction SilentlyContinue
     
     exit 1
 }
