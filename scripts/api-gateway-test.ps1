@@ -1,5 +1,7 @@
+
+
 # Simple Log Service - API Gateway Test Script
-# Version: 2.2 - Tests API Gateway with IAM authentication
+# Version: 2.3 - Tests API Gateway with IAM authentication
 # Date: 2026-02-01
 
 #Requires -Version 5.1
@@ -259,7 +261,7 @@ if __name__ == "__main__":
             Write-Info "Sending POST request $i/$TestCount to API Gateway..."
             
             # Use Python script to make signed request, passing filename
-            $pythonOutput = python aws_sigv4_request.py POST $API_ENDPOINT "api-payload-$i.json" 2>&1
+            $pythonOutput = python aws_sigv4_request.py POST "$API_ENDPOINT/logs" "api-payload-$i.json" 2>&1
             
             if ($LASTEXITCODE -eq 0) {
                 $successCount++
@@ -334,7 +336,7 @@ if __name__ == "__main__":
             Write-Info "Sending GET request to API Gateway..."
             
             # Construct GET URL with query parameters
-            $getUrl = "$API_ENDPOINT/recent?service_name=test-app&limit=10"
+            $getUrl = "$API_ENDPOINT/logs/recent?service_name=test-app&limit=10"
             
             # Use Python script to make signed GET request (no data file needed)
             $pythonOutput = python aws_sigv4_request.py GET $getUrl 2>&1
@@ -462,3 +464,4 @@ catch {
     
     exit 1
 }
+
