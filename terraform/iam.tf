@@ -1,31 +1,212 @@
-# IAM role for Lambda functions
-resource "aws_iam_role" "lambda_role" {
-  name = "${var.project_name}-lambda-role-${var.environment}"
+# iam.tf - IAM roles and policies for Simple Log Service
+# This file defines IAM roles with proper trust relationships for testing
 
+# Get current AWS account information
+data "aws_caller_identity" "current" {}
+
+# ============================================================================
+# LOG INGEST ROLE (Write-Only Access)
+# ============================================================================
+
+# IAM role for log ingestion - allows writing logs to DynamoDB
+resource "aws_iam_role" "log_ingest_role" {
+  name        = "simple-log-service-log-ingest-role-${var.environment}"
+  description = "Role for ingesting logs into the Simple Log Service"
+
+  # Trust policy - allows your current AWS account root to assume this role
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
         Action = "sts:AssumeRole"
+        Condition = {
+          StringEquals = {
+            "sts:ExternalId" = "simple-log-service-ingest-${var.environment}"
+          }
+        }
+      },
+      {
         Effect = "Allow"
         Principal = {
           Service = "lambda.amazonaws.com"
         }
+        Action = "sts:AssumeRole"
       }
     ]
   })
 
-  tags = {
-    Name        = "${var.project_name}-lambda-role-${var.environment}"
-    Environment = var.environment
-    Project     = var.project_name
-  }
+  tags = merge(var.tags, {
+    Name = "simple-log-service-log-ingest-role-${var.environment}"
+    Role = "LogIngest"
+  })
 }
 
-# IAM policy for Lambda to access DynamoDB
-resource "aws_iam_role_policy" "lambda_dynamodb" {
-  name = "${var.project_name}-lambda-dynamodb-${var.environment}"
-  role = aws_iam_role.lambda_role.id
+# Policy for log ingest role - write-only access to DynamoDB
+resource "aws_iam_role_policy" "log_ingest_policy" {
+  name = "simple-log-service-log-ingest-policy-${var.environment}"
+  role = aws_iam_role.log_ingest_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:PutItem"
+        ]
+        Resource = aws_dynamodb_table.logs.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey"
+        ]
+        Resource = aws_kms_key.dynamodb.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/*"
+      }
+    ]
+  })
+}
+
+# ============================================================================
+# LOG READ ROLE (Read-Only Access)
+# ============================================================================
+
+# IAM role for reading logs - allows querying logs from DynamoDB
+resource "aws_iam_role" "log_read_role" {
+  name        = "simple-log-service-log-read-role-${var.environment}"
+  description = "Role for reading logs from the Simple Log Service"
+
+  # Trust policy - allows your current AWS account root to assume this role
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action = "sts:AssumeRole"
+        Condition = {
+          StringEquals = {
+            "sts:ExternalId" = "simple-log-service-read-${var.environment}"
+          }
+        }
+      },
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = merge(var.tags, {
+    Name = "simple-log-service-log-read-role-${var.environment}"
+    Role = "LogRead"
+  })
+}
+
+# Policy for log read role - read-only access to DynamoDB
+resource "aws_iam_role_policy" "log_read_policy" {
+  name = "simple-log-service-log-read-policy-${var.environment}"
+  role = aws_iam_role.log_read_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:Query",
+          "dynamodb:GetItem",
+          "dynamodb:Scan"
+        ]
+        Resource = [
+          aws_dynamodb_table.logs.arn,
+          "${aws_dynamodb_table.logs.arn}/index/*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt"
+        ]
+        Resource = aws_kms_key.dynamodb.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/*"
+      }
+    ]
+  })
+}
+
+# ============================================================================
+# LOG FULL ACCESS ROLE (Read + Write Access)
+# ============================================================================
+
+# IAM role for full access - allows both reading and writing logs
+resource "aws_iam_role" "log_full_access_role" {
+  name        = "simple-log-service-log-full-access-role-${var.environment}"
+  description = "Role for full access to the Simple Log Service"
+
+  # Trust policy - allows your current AWS account root to assume this role
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action = "sts:AssumeRole"
+        Condition = {
+          StringEquals = {
+            "sts:ExternalId" = "simple-log-service-full-${var.environment}"
+          }
+        }
+      },
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = merge(var.tags, {
+    Name = "simple-log-service-log-full-access-role-${var.environment}"
+    Role = "LogFullAccess"
+  })
+}
+
+# Policy for full access role - read and write access to DynamoDB
+resource "aws_iam_role_policy" "log_full_access_policy" {
+  name = "simple-log-service-log-full-access-policy-${var.environment}"
+  role = aws_iam_role.log_full_access_role.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -34,26 +215,25 @@ resource "aws_iam_role_policy" "lambda_dynamodb" {
         Effect = "Allow"
         Action = [
           "dynamodb:PutItem",
+          "dynamodb:Query",
           "dynamodb:GetItem",
           "dynamodb:Scan",
-          "dynamodb:Query",
           "dynamodb:UpdateItem",
           "dynamodb:DeleteItem"
         ]
-        Resource = aws_dynamodb_table.logs.arn
-      }
-    ]
-  })
-}
-
-# IAM policy for Lambda to write CloudWatch Logs
-resource "aws_iam_role_policy" "lambda_logs" {
-  name = "${var.project_name}-lambda-logs-${var.environment}"
-  role = aws_iam_role.lambda_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
+        Resource = [
+          aws_dynamodb_table.logs.arn,
+          "${aws_dynamodb_table.logs.arn}/index/*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey"
+        ]
+        Resource = aws_kms_key.dynamodb.arn
+      },
       {
         Effect = "Allow"
         Action = [
@@ -61,41 +241,107 @@ resource "aws_iam_role_policy" "lambda_logs" {
           "logs:CreateLogStream",
           "logs:PutLogEvents"
         ]
-        Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.project_name}-*"
+        Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/*"
       }
     ]
   })
 }
 
-# IAM policy for Lambda to use KMS keys
-resource "aws_iam_role_policy" "lambda_kms" {
-  name = "${var.project_name}-lambda-kms-${var.environment}"
-  role = aws_iam_role.lambda_role.id
+# ============================================================================
+# LAMBDA EXECUTION ROLES
+# ============================================================================
+
+# IAM role for ingest Lambda function
+resource "aws_iam_role" "ingest_lambda_role" {
+  name        = "simple-log-service-ingest-lambda-role-${var.environment}"
+  description = "Execution role for the log ingest Lambda function"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = merge(var.tags, {
+    Name = "simple-log-service-ingest-lambda-role-${var.environment}"
+    Role = "LambdaExecution"
+  })
+}
+
+# Policy for ingest Lambda execution role
+resource "aws_iam_role_policy" "ingest_lambda_policy" {
+  name = "simple-log-service-ingest-lambda-policy-${var.environment}"
+  role = aws_iam_role.ingest_lambda_role.id
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:PutItem"
+        ]
+        Resource = aws_dynamodb_table.logs.arn
+      },
       {
         Effect = "Allow"
         Action = [
           "kms:Decrypt",
-          "kms:Encrypt",
           "kms:GenerateDataKey"
         ]
         Resource = [
-          aws_kms_key.lambda.arn,
           aws_kms_key.dynamodb.arn,
-          aws_kms_key.cloudwatch.arn
+          aws_kms_key.lambda.arn
         ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.project_name}-ingest-${var.environment}:*"
       }
     ]
   })
 }
 
-# IAM policy for Lambda X-Ray tracing
-resource "aws_iam_role_policy" "lambda_xray" {
-  name = "${var.project_name}-lambda-xray-${var.environment}"
-  role = aws_iam_role.lambda_role.id
+# IAM role for read Lambda function
+resource "aws_iam_role" "read_lambda_role" {
+  name        = "simple-log-service-read-lambda-role-${var.environment}"
+  description = "Execution role for the log read Lambda function"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = merge(var.tags, {
+    Name = "simple-log-service-read-lambda-role-${var.environment}"
+    Role = "LambdaExecution"
+  })
+}
+
+# Policy for read Lambda execution role
+resource "aws_iam_role_policy" "read_lambda_policy" {
+  name = "simple-log-service-read-lambda-policy-${var.environment}"
+  role = aws_iam_role.read_lambda_role.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -103,14 +349,69 @@ resource "aws_iam_role_policy" "lambda_xray" {
       {
         Effect = "Allow"
         Action = [
-          "xray:PutTraceSegments",
-          "xray:PutTelemetryRecords"
+          "dynamodb:Query",
+          "dynamodb:GetItem"
         ]
-        Resource = "*"
+        Resource = [
+          aws_dynamodb_table.logs.arn,
+          "${aws_dynamodb_table.logs.arn}/index/*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt"
+        ]
+        Resource = [
+          aws_kms_key.dynamodb.arn,
+          aws_kms_key.lambda.arn
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.project_name}-read-recent-${var.environment}:*"
       }
     ]
   })
 }
 
+# ============================================================================
+# DATA SOURCES
+# ============================================================================
 
+# Get current AWS region
+data "aws_region" "current" {}
 
+# ============================================================================
+# OUTPUTS
+# ============================================================================
+
+output "log_ingest_role_arn" {
+  description = "ARN of the log ingest IAM role"
+  value       = aws_iam_role.log_ingest_role.arn
+}
+
+output "log_read_role_arn" {
+  description = "ARN of the log read IAM role"
+  value       = aws_iam_role.log_read_role.arn
+}
+
+output "log_full_access_role_arn" {
+  description = "ARN of the log full access IAM role"
+  value       = aws_iam_role.log_full_access_role.arn
+}
+
+output "ingest_lambda_role_arn" {
+  description = "ARN of the ingest Lambda execution role"
+  value       = aws_iam_role.ingest_lambda_role.arn
+}
+
+output "read_lambda_role_arn" {
+  description = "ARN of the read Lambda execution role"
+  value       = aws_iam_role.read_lambda_role.arn
+}
