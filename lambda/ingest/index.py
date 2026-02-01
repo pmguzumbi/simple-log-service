@@ -5,8 +5,8 @@ from datetime import datetime
 import boto3
 from botocore.exceptions import ClientError
 
-# Get table name from environment variable
-TABLE_NAME = os.environ.get('DYNAMODB_TABLE_NAME')
+# Get table name from environment variable - check both possible names
+TABLE_NAME = os.environ.get('TABLE_NAME') or os.environ.get('DYNAMODB_TABLE_NAME')
 
 def get_dynamodb_table():
     """Get DynamoDB table resource - allows for easier mocking in tests"""
@@ -65,6 +65,8 @@ def lambda_handler(event, context):
         # Store in DynamoDB
         table = get_dynamodb_table()
         table.put_item(Item=log_entry)
+        
+        print(f"Successfully ingested log: service={body['service_name']}, level={body['level']}, timestamp={log_entry['timestamp']}")
         
         return {
             'statusCode': 201,
