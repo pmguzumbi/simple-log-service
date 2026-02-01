@@ -106,6 +106,7 @@ resource "aws_cloudwatch_metric_alarm" "read_recent_throttles" {
   tags = {
     Name        = "${var.project_name}-read-recent-throttles-alarm-${var.environment}"
     Environment = var.environment
+    Project     = var.environment
     Project     = var.project_name
   }
 }
@@ -157,7 +158,7 @@ resource "aws_cloudwatch_metric_alarm" "dynamodb_write_throttles" {
   }
 }
 
-# CloudWatch Dashboard - FIXED METRIC FORMAT
+# CloudWatch Dashboard
 resource "aws_cloudwatch_dashboard" "main" {
   dashboard_name = "${var.project_name}-dashboard-${var.environment}"
 
