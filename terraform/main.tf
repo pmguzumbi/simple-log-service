@@ -42,12 +42,6 @@ provider "aws" {
   }
 }
 
-# Data source for current AWS account ID
-data "aws_caller_identity" "current" {}
-
-# Data source for current AWS region
-data "aws_region" "current" {}
-
 # Data source for available availability zones
 data "aws_availability_zones" "available" {
   state = "available"
@@ -76,3 +70,4 @@ locals {
     ManagedBy   = "Terraform"
   }
 }
+
