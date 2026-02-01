@@ -1,3 +1,4 @@
+
 # AWS Config S3 bucket for configuration snapshots
 resource "aws_s3_bucket" "config" {
   count  = var.enable_config ? 1 : 0
@@ -48,6 +49,11 @@ resource "aws_s3_bucket_lifecycle_configuration" "config" {
   rule {
     id     = "delete-old-snapshots"
     status = "Enabled"
+
+    # Fixed: Added filter to resolve warning
+    filter {
+      prefix = ""
+    }
 
     expiration {
       days = 90
@@ -228,3 +234,4 @@ resource "aws_sns_topic_subscription" "config_email" {
   protocol  = "email"
   endpoint  = var.alarm_email
 }
+
