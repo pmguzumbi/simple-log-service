@@ -1,5 +1,3 @@
-```terraform
-
 # outputs.tf - Terraform outputs for Simple Log Service
 # This file defines output values that are NOT already defined in other files
 
@@ -93,5 +91,3 @@ output "aws_account_id" {
   description = "AWS account ID where resources are deployed"
   value       = data.aws_caller_identity.current.account_id
 }
-
-```
