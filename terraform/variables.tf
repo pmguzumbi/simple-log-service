@@ -16,6 +16,12 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
+variable "aws_account_id" {
+  description = "AWS Account ID"
+  type        = string
+  default     = "033667696152"
+}
+
 variable "enable_config" {
   description = "Enable AWS Config for compliance monitoring"
   type        = bool
@@ -76,4 +82,3 @@ variable "external_id_full_access" {
   default     = ""
   sensitive   = true
 }
-
