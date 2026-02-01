@@ -11,44 +11,61 @@ $testPayload = @{
     service_name = "test-app"
     level = "INFO"
     message = "Direct Lambda test message"
-    timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
-} | ConvertTo-Json -Compress
+    timestamp = (Get-Date).ToUniversalTime().ToString("[MAC_ADDRESS]")
+}
+
+$payloadJson = $testPayload | ConvertTo-Json -Compress
+
+Write-Host "[PAYLOAD] Test payload:" -ForegroundColor Cyan
+Write-Host $payloadJson -ForegroundColor Yellow
 
 # Save to file without BOM
-[System.IO.File]::WriteAllText("$PWD\test-payload.json", $testPayload, [System.Text.UTF8Encoding]::new($false))
+[System.IO.File]::WriteAllText("$PWD\test-payload.json", $payloadJson, [System.Text.UTF8Encoding]::new($false))
 
-Write-Host "[TEST] Invoking Lambda function directly..." -ForegroundColor Cyan
+Write-Host "`n[TEST] Invoking Lambda function directly..." -ForegroundColor Cyan
 
-# Invoke Lambda
-aws lambda invoke `
+# Invoke Lambda with proper payload handling
+$invokeResult = aws lambda invoke `
     --function-name simple-log-service-ingest-prod `
     --payload file://test-payload.json `
-    --cli-binary-format raw-in-base64-out `
-    response.json
+    response.json 2>&1
+
+Write-Host $invokeResult
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "  [PASS] Lambda invocation successful" -ForegroundColor Green
     
     # Read response
-    $response = Get-Content response.json | ConvertFrom-Json
-    Write-Host "`n[RESPONSE]" -ForegroundColor Cyan
-    Write-Host "  Status Code: $($response.statusCode)" -ForegroundColor $(if ($response.statusCode -lt 400) { "Green" } else { "Red" })
+    $responseContent = Get-Content response.json -Raw
+    Write-Host "`n[RAW RESPONSE]" -ForegroundColor Cyan
+    Write-Host $responseContent -ForegroundColor Yellow
     
-    $body = $response.body | ConvertFrom-Json
-    Write-Host "  Message: $($body.message)" -ForegroundColor Yellow
-    if ($body.log_id) {
-        Write-Host "  Log ID: $($body.log_id)" -ForegroundColor Yellow
+    try {
+        $response = $responseContent | ConvertFrom-Json
+        Write-Host "`n[PARSED RESPONSE]" -ForegroundColor Cyan
+        Write-Host "  Status Code: $($response.statusCode)" -ForegroundColor $(if ($response.statusCode -lt 400) { "Green" } else { "Red" })
+        
+        $body = $response.body | ConvertFrom-Json
+        if ($body.message) {
+            Write-Host "  Message: $($body.message)" -ForegroundColor Green
+        }
+        if ($body.log_id) {
+            Write-Host "  Log ID: $($body.log_id)" -ForegroundColor Green
+        }
+        if ($body.error) {
+            Write-Host "  Error: $($body.error)" -ForegroundColor Red
+        }
     }
-    if ($body.error) {
-        Write-Host "  Error: $($body.error)" -ForegroundColor Red
+    catch {
+        Write-Host "  Could not parse response as JSON" -ForegroundColor Yellow
     }
 } else {
     Write-Host "  [FAIL] Lambda invocation failed" -ForegroundColor Red
 }
 
-Write-Host "`n[LOGS] Checking CloudWatch Logs..." -ForegroundColor Cyan
-Start-Sleep -Seconds 2
-aws logs tail /aws/lambda/simple-log-service-ingest-prod --since 1m
+Write-Host "`n[LOGS] Checking CloudWatch Logs (last 2 minutes)..." -ForegroundColor Cyan
+Start-Sleep -Seconds 3
+aws logs tail /aws/lambda/simple-log-service-ingest-prod --since 2m --format short
 
 # Cleanup
 Remove-Item test-payload.json, response.json -ErrorAction SilentlyContinue
@@ -57,3 +74,4 @@ Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host "Test Complete" -ForegroundColor Cyan
 Write-Host "========================================`n" -ForegroundColor Cyan
 
+## The Ke
