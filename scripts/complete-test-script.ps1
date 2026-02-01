@@ -16,14 +16,15 @@ $ErrorActionPreference = "Stop"
 
 # Color-coded output functions
 function Write-Step { param([string]$Msg) Write-Host "`n[STEP] $Msg" -ForegroundColor Cyan }
-function Write-Pass { param([string]$Msg) Write-Host "  ✓ $Msg" -ForegroundColor Green }
-function Write-Fail { param([string]$Msg) Write-Host "  ✗ $Msg" -ForegroundColor Red }
-function Write-Info { param([string]$Msg) Write-Host "  → $Msg" -ForegroundColor Yellow }
+function Write-Pass { param([string]$Msg) Write-Host "  [PASS] $Msg" -ForegroundColor Green }
+function Write-Fail { param([string]$Msg) Write-Host "  [FAIL] $Msg" -ForegroundColor Red }
+function Write-Info { param([string]$Msg) Write-Host "  [INFO] $Msg" -ForegroundColor Yellow }
 
 Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host "Simple Log Service - Basic Test" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "Start Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`n" -ForegroundColor White
+Write-Host "Start Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor White
+Write-Host ""
 
 try {
     # STEP 1: Check Prerequisites
@@ -187,7 +188,8 @@ try {
     Write-Host "`n========================================" -ForegroundColor Green
     Write-Host "ALL TESTS PASSED" -ForegroundColor Green
     Write-Host "========================================" -ForegroundColor Green
-    Write-Host "End Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`n" -ForegroundColor White
+    Write-Host "End Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor White
+    Write-Host ""
     
     exit 0
 }
