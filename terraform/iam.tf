@@ -1,3 +1,5 @@
+
+
 # iam.tf - IAM roles and policies for Simple Log Service
 # This file defines IAM roles with proper trust relationships and API Gateway permissions
 
@@ -406,7 +408,8 @@ resource "aws_iam_role_policy" "read_lambda_policy" {
         Effect = "Allow"
         Action = [
           "dynamodb:Query",
-          "dynamodb:GetItem"
+          "dynamodb:GetItem",
+          "dynamodb:Scan"
         ]
         Resource = [
           aws_dynamodb_table.logs.arn,
