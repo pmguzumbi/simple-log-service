@@ -41,36 +41,43 @@ Write-Host "`n[TEST] Invoking Lambda function directly..." -ForegroundColor Cyan
 $outputFile = [System.IO.Path]::GetTempFileName()
 
 try {
-    aws lambda invoke `
+    # Capture both stdout and stderr
+    $result = aws lambda invoke `
         --function-name $FUNCTION_NAME `
         --payload file://$tempFile `
         --region $REGION `
-        $outputFile 2>&1 | Out-Null
+        $outputFile 2>&1
+    
+    # Display the AWS CLI output
+    Write-Host "`n[AWS CLI OUTPUT]" -ForegroundColor Yellow
+    Write-Host $result -ForegroundColor White
     
     if ($LASTEXITCODE -eq 0) {
-        Write-ColorOutput Green "  [PASS] Lambda invoked successfully"
+        Write-ColorOutput Green "`n  [PASS] Lambda invoked successfully"
         
         # Read and display response
-        $response = Get-Content $outputFile -Raw
-        Write-Host "`n[RESPONSE]" -ForegroundColor Yellow
-        Write-Host $response -ForegroundColor White
-        
-        # Parse response if it's JSON
-        try {
-            $responseObj = $response | ConvertFrom-Json
-            if ($responseObj.statusCode -eq 200) {
-                Write-ColorOutput Green "  [PASS] Lambda returned success status"
-            } else {
-                Write-ColorOutput Red "  [FAIL] Lambda returned error status: $($responseObj.statusCode)"
-                if ($responseObj.body) {
-                    Write-Host "  Error body: $($responseObj.body)" -ForegroundColor Red
+        if (Test-Path $outputFile) {
+            $response = Get-Content $outputFile -Raw
+            Write-Host "`n[RESPONSE]" -ForegroundColor Yellow
+            Write-Host $response -ForegroundColor White
+            
+            # Parse response if it's JSON
+            try {
+                $responseObj = $response | ConvertFrom-Json
+                if ($responseObj.statusCode -eq 200) {
+                    Write-ColorOutput Green "  [PASS] Lambda returned success status"
+                } else {
+                    Write-ColorOutput Red "  [FAIL] Lambda returned error status: $($responseObj.statusCode)"
+                    if ($responseObj.body) {
+                        Write-Host "  Error body: $($responseObj.body)" -ForegroundColor Red
+                    }
                 }
+            } catch {
+                Write-Host "  Response is not JSON or could not be parsed" -ForegroundColor Yellow
             }
-        } catch {
-            Write-Host "  Response is not JSON or could not be parsed" -ForegroundColor Yellow
         }
     } else {
-        Write-ColorOutput Red "  [FAIL] Lambda invocation failed"
+        Write-ColorOutput Red "`n  [FAIL] Lambda invocation failed with exit code: $LASTEXITCODE"
     }
 } catch {
     Write-ColorOutput Red "  [FAIL] Lambda invocation failed"
@@ -81,45 +88,82 @@ try {
     Remove-Item $outputFile -ErrorAction SilentlyContinue
 }
 
+# Check if Lambda function exists
+Write-Host "`n[VERIFY] Checking if Lambda function exists..." -ForegroundColor Cyan
+try {
+    $functionInfo = aws lambda get-function `
+        --function-name $FUNCTION_NAME `
+        --region $REGION `
+        --output json 2>&1 | ConvertFrom-Json
+    
+    Write-ColorOutput Green "  [PASS] Lambda function exists"
+    Write-Host "  Runtime: $($functionInfo.Configuration.Runtime)" -ForegroundColor White
+    Write-Host "  Handler: $($functionInfo.Configuration.Handler)" -ForegroundColor White
+    Write-Host "  Last Modified: $($functionInfo.Configuration.LastModified)" -ForegroundColor White
+} catch {
+    Write-ColorOutput Red "  [FAIL] Lambda function not found or not accessible"
+    Write-Host "  Error: $_" -ForegroundColor Red
+}
+
 # Check CloudWatch Logs
-Write-Host "`n[LOGS] Checking CloudWatch Logs (last 2 minutes)..." -ForegroundColor Cyan
+Write-Host "`n[LOGS] Checking CloudWatch Logs..." -ForegroundColor Cyan
 
 $logGroup = "/aws/lambda/$FUNCTION_NAME"
-$startTime = [DateTimeOffset]::UtcNow.AddMinutes(-2).ToUnixTimeMilliseconds()
 
+# First, check if log group exists
 try {
-    $logStreams = aws logs describe-log-streams `
-        --log-group-name $logGroup `
-        --order-by LastEventTime `
-        --descending `
-        --max-items 1 `
+    $logGroupInfo = aws logs describe-log-groups `
+        --log-group-name-prefix $logGroup `
         --region $REGION `
-        --output json | ConvertFrom-Json
+        --output json 2>&1 | ConvertFrom-Json
     
-    if ($logStreams.logStreams -and $logStreams.logStreams.Count -gt 0) {
-        $latestStream = $logStreams.logStreams[0].logStreamName
+    if ($logGroupInfo.logGroups -and $logGroupInfo.logGroups.Count -gt 0) {
+        Write-ColorOutput Green "  [PASS] Log group exists: $logGroup"
         
-        $logEvents = aws logs get-log-events `
+        # Get recent log streams
+        $startTime = [DateTimeOffset]::UtcNow.AddMinutes(-5).ToUnixTimeMilliseconds()
+        
+        $logStreams = aws logs describe-log-streams `
             --log-group-name $logGroup `
-            --log-stream-name $latestStream `
-            --start-time $startTime `
+            --order-by LastEventTime `
+            --descending `
+            --max-items 3 `
             --region $REGION `
-            --output json | ConvertFrom-Json
+            --output json 2>&1 | ConvertFrom-Json
         
-        if ($logEvents.events -and $logEvents.events.Count -gt 0) {
-            Write-Host "`nRecent log entries:" -ForegroundColor Yellow
-            foreach ($event in $logEvents.events) {
-                $timestamp = [DateTimeOffset]::FromUnixTimeMilliseconds($event.timestamp).LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss")
-                Write-Host "[$timestamp] $($event.message)" -ForegroundColor White
+        if ($logStreams.logStreams -and $logStreams.logStreams.Count -gt 0) {
+            Write-Host "`n  Found $($logStreams.logStreams.Count) recent log stream(s)" -ForegroundColor Yellow
+            
+            foreach ($stream in $logStreams.logStreams) {
+                Write-Host "`n  Stream: $($stream.logStreamName)" -ForegroundColor Cyan
+                
+                $logEvents = aws logs get-log-events `
+                    --log-group-name $logGroup `
+                    --log-stream-name $stream.logStreamName `
+                    --start-time $startTime `
+                    --limit 20 `
+                    --region $REGION `
+                    --output json 2>&1 | ConvertFrom-Json
+                
+                if ($logEvents.events -and $logEvents.events.Count -gt 0) {
+                    foreach ($event in $logEvents.events) {
+                        $timestamp = [DateTimeOffset]::FromUnixTimeMilliseconds($event.timestamp).LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss")
+                        Write-Host "    [$timestamp] $($event.message)" -ForegroundColor White
+                    }
+                } else {
+                    Write-Host "    No events in this stream" -ForegroundColor Yellow
+                }
             }
         } else {
-            Write-Host "No recent log entries found" -ForegroundColor Yellow
+            Write-Host "  No log streams found yet (Lambda may not have been invoked)" -ForegroundColor Yellow
         }
     } else {
-        Write-Host "No log streams found" -ForegroundColor Yellow
+        Write-ColorOutput Red "  [FAIL] Log group does not exist: $logGroup"
+        Write-Host "  This means the Lambda function has never been invoked or logging is not configured" -ForegroundColor Yellow
     }
 } catch {
-    Write-Host "Could not retrieve logs: $_" -ForegroundColor Yellow
+    Write-ColorOutput Red "  [FAIL] Could not check log group"
+    Write-Host "  Error: $_" -ForegroundColor Red
 }
 
 Write-Host "`n========================================" -ForegroundColor Cyan
