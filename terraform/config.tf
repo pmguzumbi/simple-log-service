@@ -42,6 +42,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "config" {
   }
 }
 
+# Fixed: Added filter to resolve S3 lifecycle configuration warning
 resource "aws_s3_bucket_lifecycle_configuration" "config" {
   count  = var.enable_config ? 1 : 0
   bucket = aws_s3_bucket.config[0].id
@@ -50,7 +51,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "config" {
     id     = "delete-old-snapshots"
     status = "Enabled"
 
-    # Fixed: Added filter to resolve warning
+    # Added filter to fix warning
     filter {
       prefix = ""
     }
