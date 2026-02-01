@@ -1,5 +1,5 @@
 # Simple Log Service - Basic Test Script with External ID Support
-# Version: 1.2 - Added external ID for role assumption
+# Version: 1.4 - Maintains external ID for security
 # Date: 2026-02-01
 
 #Requires -Version 5.1
@@ -9,7 +9,10 @@ param(
     [string]$TerraformPath = "C:\simple-log-service\terraform",
     
     [Parameter(Mandatory=$false)]
-    [int]$TestCount = 3
+    [int]$TestCount = 3,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$Environment = "prod"
 )
 
 $ErrorActionPreference = "Stop"
@@ -46,6 +49,7 @@ try {
     try {
         $identity = aws sts get-caller-identity --output json | ConvertFrom-Json
         Write-Pass "AWS credentials valid (Account: $($identity.Account))"
+        Write-Info "Current identity: $($identity.Arn)"
     }
     catch {
         Write-Fail "AWS credentials not configured"
@@ -62,7 +66,6 @@ try {
         Write-Info "Retrieving Terraform outputs..."
         $tfOutput = terraform output -json | ConvertFrom-Json
         
-        # Use the ACTUAL output names from your Terraform configuration
         $API_ENDPOINT = $tfOutput.api_endpoint.value
         $TABLE_NAME = $tfOutput.dynamodb_table_name.value
         $INGEST_FUNCTION = $tfOutput.ingest_lambda_function_name.value
@@ -89,28 +92,58 @@ try {
         Pop-Location
     }
     
-    # Get environment from Terraform path or default to prod
-    $ENVIRONMENT = if ($TerraformPath -match "\\(\w+)$") { $matches[1] } else { "prod" }
+    # Define external IDs for security
+    $INGEST_EXTERNAL_ID = "simple-log-service-ingest-$Environment"
+    $READ_EXTERNAL_ID = "simple-log-service-read-$Environment"
+    $FULL_EXTERNAL_ID = "simple-log-service-full-$Environment"
+    
+    Write-Info "Using external IDs for secure role assumption:"
+    Write-Info "  Ingest: $INGEST_EXTERNAL_ID"
+    Write-Info "  Read: $READ_EXTERNAL_ID"
+    Write-Info "  Full: $FULL_EXTERNAL_ID"
     
     # STEP 3: Test Ingest Role
     Write-Step "Testing Ingest Role (Write Access)"
     
     Write-Info "Assuming ingest role with external ID..."
     try {
+        # Attempt to assume role with external ID
         $ingestCredsRaw = aws sts assume-role `
             --role-arn $INGEST_ROLE `
-            --role-session-name "test-$(Get-Date -Format 'HHmmss')" `
-            --external-id "simple-log-service-ingest-$ENVIRONMENT" `
+            --role-session-name "test-ingest-$(Get-Date -Format 'HHmmss')" `
+            --external-id $INGEST_EXTERNAL_ID `
             --duration-seconds 900 `
             --output json 2>&1
         
         if ($LASTEXITCODE -ne 0) {
-            Write-Fail "Failed to assume ingest role"
+            Write-Fail "Failed to assume ingest role with external ID"
             Write-Info "Error output: $ingestCredsRaw"
-            Write-Info "Troubleshooting:"
-            Write-Info "  1. Verify role trust policy allows your AWS account"
-            Write-Info "  2. Check external ID: simple-log-service-ingest-$ENVIRONMENT"
-            Write-Info "  3. Ensure you have sts:AssumeRole permission"
+            Write-Info ""
+            Write-Info "Troubleshooting steps:"
+            Write-Info "  1. Verify your current role has sts:AssumeRole permission"
+            Write-Info "  2. Check the trust policy of the target role:"
+            Write-Info "     aws iam get-role --role-name simple-log-service-log-ingest-role-$Environment"
+            Write-Info "  3. Verify external ID matches: $INGEST_EXTERNAL_ID"
+            Write-Info "  4. Ensure trust policy includes your account root or specific role"
+            Write-Info ""
+            Write-Info "Required trust policy format:"
+            Write-Info '  {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Principal": {
+          "AWS": "arn:aws:iam::033667696152:root"
+        },
+        "Action": "sts:AssumeRole",
+        "Condition": {
+          "StringEquals": {
+            "sts:ExternalId": "' + $INGEST_EXTERNAL_ID + '"
+          }
+        }
+      }
+    ]
+  }'
             throw "Role assumption failed"
         }
         
@@ -120,9 +153,8 @@ try {
         $env:AWS_SECRET_ACCESS_KEY = $ingestCreds.Credentials.SecretAccessKey
         $env:AWS_SESSION_TOKEN = $ingestCreds.Credentials.SessionToken
         
-        Write-Pass "Role assumed successfully"
+        Write-Pass "Role assumed successfully with external ID"
         
-        # Verify assumed identity
         $assumedIdentity = aws sts get-caller-identity --output json | ConvertFrom-Json
         Write-Info "Assumed identity: $($assumedIdentity.Arn)"
         
@@ -169,11 +201,9 @@ try {
         throw
     }
     finally {
-        # Clear credentials
         Remove-Item Env:\AWS_ACCESS_KEY_ID, Env:\AWS_SECRET_ACCESS_KEY, Env:\AWS_SESSION_TOKEN -ErrorAction SilentlyContinue
     }
     
-    # Wait for DynamoDB consistency
     Write-Info "Waiting 3 seconds for DynamoDB eventual consistency..."
     Start-Sleep -Seconds 3
     
@@ -182,20 +212,23 @@ try {
     
     Write-Info "Assuming read role with external ID..."
     try {
+        # Attempt to assume role with external ID
         $readCredsRaw = aws sts assume-role `
             --role-arn $READ_ROLE `
-            --role-session-name "test-$(Get-Date -Format 'HHmmss')" `
-            --external-id "simple-log-service-read-$ENVIRONMENT" `
+            --role-session-name "test-read-$(Get-Date -Format 'HHmmss')" `
+            --external-id $READ_EXTERNAL_ID `
             --duration-seconds 900 `
             --output json 2>&1
         
         if ($LASTEXITCODE -ne 0) {
-            Write-Fail "Failed to assume read role"
+            Write-Fail "Failed to assume read role with external ID"
             Write-Info "Error output: $readCredsRaw"
-            Write-Info "Troubleshooting:"
-            Write-Info "  1. Verify role trust policy allows your AWS account"
-            Write-Info "  2. Check external ID: simple-log-service-read-$ENVIRONMENT"
-            Write-Info "  3. Ensure you have sts:AssumeRole permission"
+            Write-Info ""
+            Write-Info "Troubleshooting steps:"
+            Write-Info "  1. Verify your current role has sts:AssumeRole permission"
+            Write-Info "  2. Check the trust policy of the target role:"
+            Write-Info "     aws iam get-role --role-name simple-log-service-log-read-role-$Environment"
+            Write-Info "  3. Verify external ID matches: $READ_EXTERNAL_ID"
             throw "Role assumption failed"
         }
         
@@ -205,9 +238,8 @@ try {
         $env:AWS_SECRET_ACCESS_KEY = $readCreds.Credentials.SecretAccessKey
         $env:AWS_SESSION_TOKEN = $readCreds.Credentials.SessionToken
         
-        Write-Pass "Role assumed successfully"
+        Write-Pass "Role assumed successfully with external ID"
         
-        # Verify assumed identity
         $assumedIdentity = aws sts get-caller-identity --output json | ConvertFrom-Json
         Write-Info "Assumed identity: $($assumedIdentity.Arn)"
         
@@ -260,7 +292,6 @@ try {
         throw
     }
     finally {
-        # Clear credentials
         Remove-Item Env:\AWS_ACCESS_KEY_ID, Env:\AWS_SECRET_ACCESS_KEY, Env:\AWS_SESSION_TOKEN -ErrorAction SilentlyContinue
     }
     
@@ -287,12 +318,17 @@ try {
         }
         
         # Check if point-in-time recovery is enabled
-        $pitrStatus = aws dynamodb describe-continuous-backups --table-name $TABLE_NAME --output json | ConvertFrom-Json
-        if ($pitrStatus.ContinuousBackupsDescription.PointInTimeRecoveryDescription.PointInTimeRecoveryStatus -eq "ENABLED") {
-            Write-Pass "Point-in-Time Recovery: ENABLED"
+        try {
+            $pitrStatus = aws dynamodb describe-continuous-backups --table-name $TABLE_NAME --output json | ConvertFrom-Json
+            if ($pitrStatus.ContinuousBackupsDescription.PointInTimeRecoveryDescription.PointInTimeRecoveryStatus -eq "ENABLED") {
+                Write-Pass "Point-in-Time Recovery: ENABLED"
+            }
+            else {
+                Write-Info "Point-in-Time Recovery: DISABLED"
+            }
         }
-        else {
-            Write-Info "Point-in-Time Recovery: DISABLED"
+        catch {
+            Write-Info "Could not check Point-in-Time Recovery status"
         }
     }
     catch {
