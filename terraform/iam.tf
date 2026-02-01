@@ -1,4 +1,3 @@
-
 # iam.tf - IAM roles and policies for Simple Log Service
 # This file defines IAM roles with proper trust relationships and API Gateway permissions
 
@@ -76,7 +75,7 @@ resource "aws_iam_role_policy" "log_ingest_policy" {
         Action = [
           "execute-api:Invoke"
         ]
-        Resource = "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.log_api.id}/${var.environment}/POST/logs"
+        Resource = "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.log_api.id}/${var.environment}/*/logs"
       },
       {
         Effect = "Allow"
@@ -172,7 +171,7 @@ resource "aws_iam_role_policy" "log_read_policy" {
         Action = [
           "execute-api:Invoke"
         ]
-        Resource = "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.log_api.id}/${var.environment}/GET/logs/recent"
+        Resource = "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.log_api.id}/${var.environment}/*/logs/*"
       },
       {
         Effect = "Allow"
