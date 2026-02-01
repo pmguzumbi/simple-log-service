@@ -1,5 +1,7 @@
+
+
 # API Gateway REST API
-resource "aws_api_gateway_rest_api" "log_service" {
+resource "aws_api_gateway_rest_api" "log_api" {
   name        = "${var.project_name}-api-${var.environment}"
   description = "API for Simple Log Service"
 
@@ -16,28 +18,28 @@ resource "aws_api_gateway_rest_api" "log_service" {
 
 # /logs resource
 resource "aws_api_gateway_resource" "logs" {
-  rest_api_id = aws_api_gateway_rest_api.log_service.id
-  parent_id   = aws_api_gateway_rest_api.log_service.root_resource_id
+  rest_api_id = aws_api_gateway_rest_api.log_api.id
+  parent_id   = aws_api_gateway_rest_api.log_api.root_resource_id
   path_part   = "logs"
 }
 
 # /logs/recent resource
 resource "aws_api_gateway_resource" "logs_recent" {
-  rest_api_id = aws_api_gateway_rest_api.log_service.id
+  rest_api_id = aws_api_gateway_rest_api.log_api.id
   parent_id   = aws_api_gateway_resource.logs.id
   path_part   = "recent"
 }
 
 # POST /logs method with IAM authorization
 resource "aws_api_gateway_method" "post_logs" {
-  rest_api_id   = aws_api_gateway_rest_api.log_service.id
+  rest_api_id   = aws_api_gateway_rest_api.log_api.id
   resource_id   = aws_api_gateway_resource.logs.id
   http_method   = "POST"
   authorization = "AWS_IAM"
 }
 
 resource "aws_api_gateway_integration" "post_logs" {
-  rest_api_id             = aws_api_gateway_rest_api.log_service.id
+  rest_api_id             = aws_api_gateway_rest_api.log_api.id
   resource_id             = aws_api_gateway_resource.logs.id
   http_method             = aws_api_gateway_method.post_logs.http_method
   integration_http_method = "POST"
@@ -47,14 +49,14 @@ resource "aws_api_gateway_integration" "post_logs" {
 
 # GET /logs/recent method with IAM authorization
 resource "aws_api_gateway_method" "get_logs_recent" {
-  rest_api_id   = aws_api_gateway_rest_api.log_service.id
+  rest_api_id   = aws_api_gateway_rest_api.log_api.id
   resource_id   = aws_api_gateway_resource.logs_recent.id
   http_method   = "GET"
   authorization = "AWS_IAM"
 }
 
 resource "aws_api_gateway_integration" "get_logs_recent" {
-  rest_api_id             = aws_api_gateway_rest_api.log_service.id
+  rest_api_id             = aws_api_gateway_rest_api.log_api.id
   resource_id             = aws_api_gateway_resource.logs_recent.id
   http_method             = aws_api_gateway_method.get_logs_recent.http_method
   integration_http_method = "POST"
@@ -63,8 +65,8 @@ resource "aws_api_gateway_integration" "get_logs_recent" {
 }
 
 # API Gateway deployment
-resource "aws_api_gateway_deployment" "log_service" {
-  rest_api_id = aws_api_gateway_rest_api.log_service.id
+resource "aws_api_gateway_deployment" "log_api" {
+  rest_api_id = aws_api_gateway_rest_api.log_api.id
 
   depends_on = [
     aws_api_gateway_integration.post_logs,
@@ -77,9 +79,9 @@ resource "aws_api_gateway_deployment" "log_service" {
 }
 
 # API Gateway stage
-resource "aws_api_gateway_stage" "log_service" {
-  deployment_id = aws_api_gateway_deployment.log_service.id
-  rest_api_id   = aws_api_gateway_rest_api.log_service.id
+resource "aws_api_gateway_stage" "log_api" {
+  deployment_id = aws_api_gateway_deployment.log_api.id
+  rest_api_id   = aws_api_gateway_rest_api.log_api.id
   stage_name    = var.environment
 
   xray_tracing_enabled = true
@@ -105,7 +107,7 @@ resource "aws_cloudwatch_log_group" "api_gateway" {
 }
 
 # API Gateway account settings for CloudWatch logging
-resource "aws_api_gateway_account" "log_service" {
+resource "aws_api_gateway_account" "log_api" {
   cloudwatch_role_arn = aws_iam_role.api_gateway_cloudwatch.arn
 }
 
@@ -144,7 +146,7 @@ resource "aws_lambda_permission" "ingest_api_gateway" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.ingest_log.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.log_service.execution_arn}/*/*"
+  source_arn    = "${aws_api_gateway_rest_api.log_api.execution_arn}/*/*"
 }
 
 resource "aws_lambda_permission" "read_recent_api_gateway" {
@@ -152,5 +154,16 @@ resource "aws_lambda_permission" "read_recent_api_gateway" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.read_recent.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.log_service.execution_arn}/*/*"
+  source_arn    = "${aws_api_gateway_rest_api.log_api.execution_arn}/*/*"
+}
+
+# Outputs
+output "api_endpoint" {
+  description = "API Gateway endpoint URL"
+  value       = "${aws_api_gateway_stage.log_api.invoke_url}"
+}
+
+output "api_gateway_id" {
+  description = "API Gateway REST API ID"
+  value       = aws_api_gateway_rest_api.log_api.id
 }
