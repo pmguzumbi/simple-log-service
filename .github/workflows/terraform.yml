@@ -48,11 +48,20 @@ jobs:
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
       
-      - name: Terraform Format Check
-        working-directory: ./terraform
-        run: terraform fmt -check -recursive
-        continue-on-error: true
+            
+      - name: Terraform Format
+       working-directory: ./terraform
+       run: terraform fmt -recursive
       
+      - name: Commit formatted files
+        run: |
+          git config --local user.e mail "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add terraform/
+          git diff --staged --quiet || git commit -m "Auto-format Terraform files"
+          git push
+
+
       - name: Terraform Init
         working-directory: ./terraform
         run: terraform init -backend=false
