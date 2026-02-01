@@ -92,27 +92,46 @@ try {
     Push-Location $TerraformPath
     
     try {
-        Write-Info "Retrieving Terraform outputs..."
-        $tfOutput = terraform output -json 2>&1 | ConvertFrom-Json
-        
-        $API_ENDPOINT = $tfOutput.api_endpoint.value
-        $TABLE_NAME = $tfOutput.dynamodb_table_name.value
-        $INGEST_ROLE = $tfOutput.log_ingest_role_arn.value
-        $READ_ROLE = $tfOutput.log_read_role_arn.value
-        
-        if (-not $API_ENDPOINT) {
-            Write-Fail "Missing API endpoint in Terraform outputs"
-            exit 1
-        }
-        
-        Write-Pass "API Endpoint: $API_ENDPOINT"
-        Write-Pass "DynamoDB Table: $TABLE_NAME"
-        Write-Pass "Ingest Role: $INGEST_ROLE"
-        Write-Pass "Read Role: $READ_ROLE"
+    Write-Info "Retrieving Terraform outputs..."
+
+    # Capture raw output to see what's happening
+    $tfOutputRaw = terraform output -json 2>&1
+
+    # Check if it's valid JSON
+    try {
+        $tfOutput = $tfOutputRaw | ConvertFrom-Json
     }
-    finally {
-        Pop-Location
+    catch {
+        Write-Fail "Terraform output is not valid JSON"
+        Write-Info "Raw Terraform output:"
+        Write-Info $tfOutputRaw
+        Write-Info ""
+        Write-Info "This usually means:"
+        Write-Info "  1. Terraform state is corrupted or incomplete"
+        Write-Info "  2. Terraform needs to be re-initialized: terraform init"
+        Write-Info "  3. Infrastructure needs to be re-applied: terraform apply"
+        exit 1
     }
+
+    $API_ENDPOINT = $tfOutput.api_endpoint.value
+    $TABLE_NAME = $tfOutput.dynamodb_table_name.value
+    $INGEST_ROLE = $tfOutput.log_ingest_role_arn.value
+    $READ_ROLE = $tfOutput.log_read_role_arn.value
+
+    if (-not $API_ENDPOINT) {
+        Write-Fail "Missing API endpoint in Terraform outputs"
+        exit 1
+    }
+
+    Write-Pass "API Endpoint: $API_ENDPOINT"
+    Write-Pass "DynamoDB Table: $TABLE_NAME"
+    Write-Pass "Ingest Role: $INGEST_ROLE"
+    Write-Pass "Read Role: $READ_ROLE"
+}
+finally {
+    Pop-Location
+}
+
     
     # Define external IDs for security
     $INGEST_EXTERNAL_ID = "simple-log-service-ingest-$Environment"
