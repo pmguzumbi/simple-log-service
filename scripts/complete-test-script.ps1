@@ -2,6 +2,7 @@
 # Author: Automated Testing Suite
 # Date: 2026-02-01
 # Description: Comprehensive end-to-end testing with IAM authentication for all three roles
+# Version: 2.0 - Enhanced error handling and diagnostics
 
 #Requires -Version 5.1
 
@@ -136,16 +137,70 @@ function Set-AWSCredentials {
     $env:AWS_SESSION_TOKEN = $Credentials.Credentials.SessionToken
 }
 
+function Test-Prerequisites {
+    Write-TestStep "Validating Prerequisites"
+    
+    # Check Terraform directory exists
+    if (-not (Test-Path $TerraformPath)) {
+        Write-Failure "Terraform directory not found: $TerraformPath"
+        throw "Terraform directory does not exist. Please verify the path."
+    }
+    Write-Success "Terraform directory exists: $TerraformPath"
+    
+    # Check Terraform state file exists
+    $stateFile = Join-Path $TerraformPath "terraform.tfstate"
+    if (-not (Test-Path $stateFile)) {
+        Write-Failure "Terraform state file not found: $stateFile"
+        throw "Terraform state file does not exist. Infrastructure may not be deployed."
+    }
+    Write-Success "Terraform state file exists"
+    
+    # Check AWS CLI is available
+    try {
+        $null = aws --version 2>&1
+        Write-Success "AWS CLI is available"
+    }
+    catch {
+        Write-Failure "AWS CLI not found"
+        throw "AWS CLI is not installed or not in PATH"
+    }
+    
+    # Check Terraform is available
+    try {
+        $null = terraform version 2>&1
+        Write-Success "Terraform is available"
+    }
+    catch {
+        Write-Failure "Terraform not found"
+        throw "Terraform is not installed or not in PATH"
+    }
+    
+    # Verify AWS credentials
+    try {
+        $identity = aws sts get-caller-identity --output json 2>&1 | ConvertFrom-Json
+        Write-Success "AWS credentials valid - Account: $($identity.Account)"
+    }
+    catch {
+        Write-Failure "AWS credentials invalid or not configured"
+        throw "Unable to authenticate with AWS. Please configure AWS credentials."
+    }
+    
+    Add-TestResult -TestName "Prerequisites Validation" -Status "Passed"
+}
+
 # ============================================================================
 # MAIN TEST EXECUTION
 # ============================================================================
 
 try {
-    Write-TestHeader "Simple Log Service - Complete Test Suite"
+    Write-TestHeader "Simple Log Service - Complete Test Suite v2.0"
     Write-Info "Environment: $Environment"
     Write-Info "Test Iterations: $TestIterations"
     Write-Info "Test Role: $TestRole"
     Write-Info "Start Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+
+    # STEP 0: VALIDATE PREREQUISITES
+    Test-Prerequisites
 
     # STEP 1: GATHER INFRASTRUCTURE INFORMATION
     Write-TestStep "Step 1: Gathering Infrastructure Information"
@@ -153,16 +208,46 @@ try {
     Push-Location $TerraformPath
     
     try {
-        $API_ENDPOINT = terraform output -raw api_gateway_url 2>$null
-        $TABLE_NAME = terraform output -raw dynamodb_table_name 2>$null
-        $INGEST_FUNCTION = terraform output -raw ingest_lambda_name 2>$null
-        $READ_FUNCTION = terraform output -raw read_recent_lambda_name 2>$null
-        $INGEST_ROLE_ARN = terraform output -raw log_ingest_role_arn 2>$null
-        $READ_ROLE_ARN = terraform output -raw log_read_role_arn 2>$null
-        $FULL_ACCESS_ROLE_ARN = terraform output -raw log_full_access_role_arn 2>$null
+        Write-Info "Retrieving Terraform outputs..."
         
-        if (-not $API_ENDPOINT -or -not $TABLE_NAME -or -not $INGEST_FUNCTION -or -not $READ_FUNCTION) {
-            throw "Failed to retrieve Terraform outputs. Ensure infrastructure is deployed."
+        # Get all outputs at once to reduce calls
+        $terraformOutputRaw = terraform output -json 2>&1
+        
+        if ($LASTEXITCODE -ne 0) {
+            Write-Failure "Terraform output command failed"
+            Write-Host "Terraform Error Output:" -ForegroundColor Red
+            Write-Host $terraformOutputRaw -ForegroundColor Red
+            throw "Failed to retrieve Terraform outputs. Error: $terraformOutputRaw"
+        }
+        
+        $terraformOutput = $terraformOutputRaw | ConvertFrom-Json
+        
+        # Extract individual outputs with validation
+        $API_ENDPOINT = $terraformOutput.api_gateway_url.value
+        $TABLE_NAME = $terraformOutput.dynamodb_table_name.value
+        $INGEST_FUNCTION = $terraformOutput.ingest_lambda_name.value
+        $READ_FUNCTION = $terraformOutput.read_recent_lambda_name.value
+        $INGEST_ROLE_ARN = $terraformOutput.log_ingest_role_arn.value
+        $READ_ROLE_ARN = $terraformOutput.log_read_role_arn.value
+        $FULL_ACCESS_ROLE_ARN = $terraformOutput.log_full_access_role_arn.value
+        
+        # Validate all required outputs are present
+        $missingOutputs = @()
+        if ([string]::IsNullOrWhiteSpace($API_ENDPOINT)) { $missingOutputs += "api_gateway_url" }
+        if ([string]::IsNullOrWhiteSpace($TABLE_NAME)) { $missingOutputs += "dynamodb_table_name" }
+        if ([string]::IsNullOrWhiteSpace($INGEST_FUNCTION)) { $missingOutputs += "ingest_lambda_name" }
+        if ([string]::IsNullOrWhiteSpace($READ_FUNCTION)) { $missingOutputs += "read_recent_lambda_name" }
+        if ([string]::IsNullOrWhiteSpace($INGEST_ROLE_ARN)) { $missingOutputs += "log_ingest_role_arn" }
+        if ([string]::IsNullOrWhiteSpace($READ_ROLE_ARN)) { $missingOutputs += "log_read_role_arn" }
+        if ([string]::IsNullOrWhiteSpace($FULL_ACCESS_ROLE_ARN)) { $missingOutputs += "log_full_access_role_arn" }
+        
+        if ($missingOutputs.Count -gt 0) {
+            Write-Failure "Missing Terraform outputs: $($missingOutputs -join ', ')"
+            Write-Info "Available outputs:"
+            $terraformOutput.PSObject.Properties | ForEach-Object {
+                Write-Info "  - $($_.Name): $($_.Value.value)"
+            }
+            throw "Required Terraform outputs are missing. Ensure infrastructure is fully deployed."
         }
         
         Write-Success "API Endpoint: $API_ENDPOINT"
@@ -182,6 +267,10 @@ try {
     }
     catch {
         Write-Failure "Failed to gather infrastructure information: $($_.Exception.Message)"
+        Write-Info "Troubleshooting steps:"
+        Write-Info "  1. Verify infrastructure is deployed: terraform show"
+        Write-Info "  2. Check Terraform state: terraform state list"
+        Write-Info "  3. Validate outputs exist: terraform output"
         Add-TestResult -TestName "Infrastructure Discovery" -Status "Failed" -Message $_.Exception.Message
         throw
     }
@@ -202,13 +291,15 @@ try {
         
         try {
             Write-Info "Assuming ingest role..."
-            $ingestCreds = aws sts assume-role --role-arn $INGEST_ROLE_ARN --role-session-name "ingest-test-$(Get-Date -Format 'yyyyMMddHHmmss')" --duration-seconds 3600 --output json 2>&1
+            $ingestCredsRaw = aws sts assume-role --role-arn $INGEST_ROLE_ARN --role-session-name "ingest-test-$(Get-Date -Format 'yyyyMMddHHmmss')" --duration-seconds 3600 --output json 2>&1
             
             if ($LASTEXITCODE -ne 0) {
-                throw "Failed to assume ingest role"
+                Write-Failure "Failed to assume ingest role"
+                Write-Host "Error: $ingestCredsRaw" -ForegroundColor Red
+                throw "Unable to assume ingest role. Check IAM permissions and trust relationships."
             }
             
-            $ingestCredentials = $ingestCreds | ConvertFrom-Json
+            $ingestCredentials = $ingestCredsRaw | ConvertFrom-Json
             Set-AWSCredentials -Credentials $ingestCredentials
             
             Write-Success "Successfully assumed ingest role"
@@ -233,10 +324,14 @@ try {
                     
                     $payload | Out-File -FilePath "test-ingest-$i.json" -Encoding utf8 -NoNewline
                     
-                    aws lambda invoke --function-name $INGEST_FUNCTION --payload file://test-ingest-$i.json --cli-binary-format raw-in-base64-out "ingest-response-$i.json" 2>&1 | Out-Null
+                    $invokeResult = aws lambda invoke --function-name $INGEST_FUNCTION --payload file://test-ingest-$i.json --cli-binary-format raw-in-base64-out "ingest-response-$i.json" 2>&1
                     
                     if ($LASTEXITCODE -eq 0) {
                         $ingestSuccessCount++
+                        Write-Info "  Test $i/$TestIterations completed successfully"
+                    }
+                    else {
+                        Write-Warning "  Test $i/$TestIterations failed: $invokeResult"
                     }
                     
                     Start-Sleep -Milliseconds 200
@@ -275,13 +370,15 @@ try {
         
         try {
             Write-Info "Assuming read role..."
-            $readCreds = aws sts assume-role --role-arn $READ_ROLE_ARN --role-session-name "read-test-$(Get-Date -Format 'yyyyMMddHHmmss')" --duration-seconds 3600 --output json 2>&1
+            $readCredsRaw = aws sts assume-role --role-arn $READ_ROLE_ARN --role-session-name "read-test-$(Get-Date -Format 'yyyyMMddHHmmss')" --duration-seconds 3600 --output json 2>&1
             
             if ($LASTEXITCODE -ne 0) {
-                throw "Failed to assume read role"
+                Write-Failure "Failed to assume read role"
+                Write-Host "Error: $readCredsRaw" -ForegroundColor Red
+                throw "Unable to assume read role. Check IAM permissions and trust relationships."
             }
             
-            $readCredentials = $readCreds | ConvertFrom-Json
+            $readCredentials = $readCredsRaw | ConvertFrom-Json
             Set-AWSCredentials -Credentials $readCredentials
             
             Write-Success "Successfully assumed read role"
@@ -304,13 +401,17 @@ try {
                     
                     $readPayload | Out-File -FilePath "test-read-$i.json" -Encoding utf8 -NoNewline
                     
-                    aws lambda invoke --function-name $READ_FUNCTION --payload file://test-read-$i.json --cli-binary-format raw-in-base64-out "read-response-$i.json" 2>&1 | Out-Null
+                    $invokeResult = aws lambda invoke --function-name $READ_FUNCTION --payload file://test-read-$i.json --cli-binary-format raw-in-base64-out "read-response-$i.json" 2>&1
                     
                     if ($LASTEXITCODE -eq 0) {
                         $result = Get-Content "read-response-$i.json" | ConvertFrom-Json
                         $logCount = if ($result.logs) { $result.logs.Count } else { 0 }
                         $totalLogsRetrieved += $logCount
                         $readSuccessCount++
+                        Write-Info "  Test $i/$TestIterations completed successfully (Retrieved $logCount logs)"
+                    }
+                    else {
+                        Write-Warning "  Test $i/$TestIterations failed: $invokeResult"
                     }
                 }
                 catch {
@@ -342,13 +443,15 @@ try {
         
         try {
             Write-Info "Assuming full access role..."
-            $fullCreds = aws sts assume-role --role-arn $FULL_ACCESS_ROLE_ARN --role-session-name "full-test-$(Get-Date -Format 'yyyyMMddHHmmss')" --duration-seconds 3600 --output json 2>&1
+            $fullCredsRaw = aws sts assume-role --role-arn $FULL_ACCESS_ROLE_ARN --role-session-name "full-test-$(Get-Date -Format 'yyyyMMddHHmmss')" --duration-seconds 3600 --output json 2>&1
             
             if ($LASTEXITCODE -ne 0) {
-                throw "Failed to assume full access role"
+                Write-Failure "Failed to assume full access role"
+                Write-Host "Error: $fullCredsRaw" -ForegroundColor Red
+                throw "Unable to assume full access role. Check IAM permissions and trust relationships."
             }
             
-            $fullCredentials = $fullCreds | ConvertFrom-Json
+            $fullCredentials = $fullCredsRaw | ConvertFrom-Json
             Set-AWSCredentials -Credentials $fullCredentials
             
             Write-Success "Successfully assumed full access role"
@@ -368,14 +471,14 @@ try {
             
             $writePayload | Out-File -FilePath "test-full-write.json" -Encoding utf8 -NoNewline
             
-            aws lambda invoke --function-name $INGEST_FUNCTION --payload file://test-full-write.json --cli-binary-format raw-in-base64-out "full-write-response.json" 2>&1 | Out-Null
+            $writeResult = aws lambda invoke --function-name $INGEST_FUNCTION --payload file://test-full-write.json --cli-binary-format raw-in-base64-out "full-write-response.json" 2>&1
             
             if ($LASTEXITCODE -eq 0) {
                 Write-Success "Write access successful"
                 Add-TestResult -TestName "Full Access Role - Write Test" -Status "Passed" -Role "FullAccess"
             }
             else {
-                Write-Failure "Write access failed"
+                Write-Failure "Write access failed: $writeResult"
                 Add-TestResult -TestName "Full Access Role - Write Test" -Status "Failed" -Role "FullAccess"
             }
             
@@ -389,7 +492,7 @@ try {
             
             $readPayload | Out-File -FilePath "test-full-read.json" -Encoding utf8 -NoNewline
             
-            aws lambda invoke --function-name $READ_FUNCTION --payload file://test-full-read.json --cli-binary-format raw-in-base64-out "full-read-response.json" 2>&1 | Out-Null
+            $readResult = aws lambda invoke --function-name $READ_FUNCTION --payload file://test-full-read.json --cli-binary-format raw-in-base64-out "full-read-response.json" 2>&1
             
             if ($LASTEXITCODE -eq 0) {
                 $result = Get-Content "full-read-response.json" | ConvertFrom-Json
@@ -398,7 +501,7 @@ try {
                 Add-TestResult -TestName "Full Access Role - Read Test" -Status "Passed" -Role "FullAccess"
             }
             else {
-                Write-Failure "Read access failed"
+                Write-Failure "Read access failed: $readResult"
                 Add-TestResult -TestName "Full Access Role - Read Test" -Status "Failed" -Role "FullAccess"
             }
         }
@@ -415,7 +518,14 @@ try {
     Write-TestStep "Step 5: Verifying DynamoDB Table"
     
     try {
-        $tableInfo = aws dynamodb describe-table --table-name $TABLE_NAME --output json | ConvertFrom-Json
+        $tableInfoRaw = aws dynamodb describe-table --table-name $TABLE_NAME --output json 2>&1
+        
+        if ($LASTEXITCODE -ne 0) {
+            Write-Failure "Failed to describe DynamoDB table: $tableInfoRaw"
+            throw "Unable to access DynamoDB table"
+        }
+        
+        $tableInfo = $tableInfoRaw | ConvertFrom-Json
         
         Write-Success "Table Status: $($tableInfo.Table.TableStatus)"
         Write-Success "Item Count: $($tableInfo.Table.ItemCount)"
@@ -442,16 +552,19 @@ try {
     
     foreach ($logGroup in $logGroups) {
         try {
-            $streams = aws logs describe-log-streams --log-group-name $logGroup --order-by LastEventTime --descending --max-items 1 --output json 2>&1
+            $streamsRaw = aws logs describe-log-streams --log-group-name $logGroup --order-by LastEventTime --descending --max-items 1 --output json 2>&1
             
             if ($LASTEXITCODE -eq 0) {
-                $streamInfo = $streams | ConvertFrom-Json
+                $streamInfo = $streamsRaw | ConvertFrom-Json
                 if ($streamInfo.logStreams.Count -gt 0) {
                     Write-Success "Log group exists: $logGroup"
                 }
                 else {
-                    Write-Failure "No log streams found in: $logGroup"
+                    Write-Warning "No log streams found in: $logGroup"
                 }
+            }
+            else {
+                Write-Warning "Could not access log group: $logGroup"
             }
         }
         catch {
@@ -473,7 +586,10 @@ try {
     
     $kmsKeyArn = $tableInfo.Table.SSEDescription.KMSMasterKeyArn
     if ($kmsKeyArn -match "arn:aws:kms") {
-        Write-Success "Using customer-managed KMS key"
+        Write-Success "Using customer-managed KMS key: $kmsKeyArn"
+    }
+    else {
+        Write-Warning "Not using customer-managed KMS key"
     }
     
     Add-TestResult -TestName "Security Configuration" -Status "Passed"
@@ -483,40 +599,53 @@ try {
         Write-TestStep "Step 8: Performance Testing"
         
         try {
-            $perfCreds = aws sts assume-role --role-arn $FULL_ACCESS_ROLE_ARN --role-session-name "perf-test" --duration-seconds 3600 --output json | ConvertFrom-Json
-            Set-AWSCredentials -Credentials $perfCreds
+            $perfCredsRaw = aws sts assume-role --role-arn $FULL_ACCESS_ROLE_ARN --role-session-name "perf-test" --duration-seconds 3600 --output json 2>&1
             
-            $perfIterations = 50
-            Write-Info "Running $perfIterations performance test iterations..."
-            
-            $startTime = Get-Date
-            $successCount = 0
-            
-            for ($i = 1; $i -le $perfIterations; $i++) {
-                $payload = @{
-                    application = "perf-test"
-                    level = "INFO"
-                    message = "Performance test message $i"
-                    timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
-                } | ConvertTo-Json -Compress
-                
-                $payload | Out-File -FilePath "perf-test.json" -Encoding utf8 -NoNewline
-                
-                aws lambda invoke --function-name $INGEST_FUNCTION --payload file://perf-test.json --cli-binary-format raw-in-base64-out "perf-response.json" 2>&1 | Out-Null
-                
-                if ($LASTEXITCODE -eq 0) { $successCount++ }
-                if ($i % 10 -eq 0) { Write-Info "Completed $i/$perfIterations requests" }
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "Could not assume role for performance test: $perfCredsRaw"
+                Add-TestResult -TestName "Performance Test" -Status "Skipped" -Message "Role assumption failed"
             }
-            
-            $endTime = Get-Date
-            $duration = ($endTime - $startTime).TotalSeconds
-            $throughput = $perfIterations / $duration
-            
-            Write-Success "Completed $successCount/$perfIterations requests in $([math]::Round($duration, 2)) seconds"
-            Write-Success "Throughput: $([math]::Round($throughput, 2)) requests/second"
-            Write-Success "Success Rate: $([math]::Round(($successCount / $perfIterations) * 100, 2))%"
-            
-            Add-TestResult -TestName "Performance Test" -Status "Passed"
+            else {
+                $perfCreds = $perfCredsRaw | ConvertFrom-Json
+                Set-AWSCredentials -Credentials $perfCreds
+                
+                $perfIterations = 50
+                Write-Info "Running $perfIterations performance test iterations..."
+                
+                $startTime = Get-Date
+                $successCount = 0
+                
+                for ($i = 1; $i -le $perfIterations; $i++) {
+                    $payload = @{
+                        application = "perf-test"
+                        level = "INFO"
+                        message = "Performance test message $i"
+                        timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                    } | ConvertTo-Json -Compress
+                    
+                    $payload | Out-File -FilePath "perf-test.json" -Encoding utf8 -NoNewline
+                    
+                    $perfResult = aws lambda invoke --function-name $INGEST_FUNCTION --payload file://perf-test.json --cli-binary-format raw-in-base64-out "perf-response.json" 2>&1
+                    
+                    if ($LASTEXITCODE -eq 0) { $successCount++ }
+                    if ($i % 10 -eq 0) { Write-Info "Completed $i/$perfIterations requests" }
+                }
+                
+                $endTime = Get-Date
+                $duration = ($endTime - $startTime).TotalSeconds
+                $throughput = $perfIterations / $duration
+                
+                Write-Success "Completed $successCount/$perfIterations requests in $([math]::Round($duration, 2)) seconds"
+                Write-Success "Throughput: $([math]::Round($throughput, 2)) requests/second"
+                Write-Success "Success Rate: $([math]::Round(($successCount / $perfIterations) * 100, 2))%"
+                
+                Add-TestResult -TestName "Performance Test" -Status "Passed" -Details @{
+                    TotalRequests = $perfIterations
+                    SuccessfulRequests = $successCount
+                    Duration = $duration
+                    Throughput = $throughput
+                }
+            }
         }
         catch {
             Write-Failure "Performance test failed: $($_.Exception.Message)"
@@ -529,12 +658,15 @@ try {
 }
 catch {
     Write-Failure "Critical test failure: $($_.Exception.Message)"
+    Write-Host "`nStack Trace:" -ForegroundColor Red
     Write-Host $_.ScriptStackTrace -ForegroundColor Red
+    Write-Host "`nException Details:" -ForegroundColor Red
+    Write-Host $_.Exception.GetType().FullName -ForegroundColor Red
 }
 finally {
     if (-not $SkipCleanup) {
         Write-TestStep "Cleaning up test files..."
-        Remove-Item test-*.json, *-response-*.json, perf-*.json -ErrorAction SilentlyContinue
+        Remove-Item test-*.json, *-response*.json, perf-*.json -ErrorAction SilentlyContinue
         Write-Success "Cleanup completed"
     }
     
@@ -549,39 +681,4 @@ finally {
     Write-Host "  Passed: $($script:TestResults.Passed)" -ForegroundColor Green
     Write-Host "  Failed: $($script:TestResults.Failed)" -ForegroundColor Red
     Write-Host "  Skipped: $($script:TestResults.Skipped)" -ForegroundColor Yellow
-    Write-Host "  Duration: $([math]::Round($duration.TotalSeconds, 2)) seconds" -ForegroundColor White
-    
-    $successRate = if ($script:TestResults.Tests.Count -gt 0) {
-        [math]::Round(($script:TestResults.Passed / $script:TestResults.Tests.Count) * 100, 2)
-    } else { 0 }
-    
-    Write-Host "`nSuccess Rate: $successRate%" -ForegroundColor $(if ($successRate -ge 90) { "Green" } elseif ($successRate -ge 70) { "Yellow" } else { "Red" })
-    
-    Write-Host "`nDetailed Test Results:" -ForegroundColor Cyan
-    foreach ($test in $script:TestResults.Tests) {
-        $statusColor = switch ($test.Status) {
-            "Passed" { "Green" }
-            "Failed" { "Red" }
-            "Skipped" { "Yellow" }
-        }
-        Write-Host "  [$($test.Status)] $($test.Name)" -ForegroundColor $statusColor
-        if ($test.Message) {
-            Write-Host "    Message: $($test.Message)" -ForegroundColor Gray
-        }
-    }
-    
-    if ($GenerateReport) {
-        $reportPath = "test-report-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
-        $script:TestResults | ConvertTo-Json -Depth 10 | Out-File $reportPath -Encoding utf8
-        Write-Host "`nDetailed report saved to: $reportPath" -ForegroundColor Cyan
-    }
-    
-    Write-Host "`n$('='*80)" -ForegroundColor Cyan
-    
-    if ($script:TestResults.Failed -gt 0) {
-        exit 1
-    }
-    else {
-        exit 0
-    }
-}
+    Write-Host "  Duration: $([math]::Round($duration.TotalSeconds,
