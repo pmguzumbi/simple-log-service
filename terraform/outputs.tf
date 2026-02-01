@@ -1,4 +1,3 @@
-```terraform
 
 # outputs.tf - Terraform outputs for Simple Log Service
 # This file defines all output values for the infrastructure
@@ -125,4 +124,4 @@ output "aws_account_id" {
   value       = data.aws_caller_identity.current.account_id
 }
 
-```
+
