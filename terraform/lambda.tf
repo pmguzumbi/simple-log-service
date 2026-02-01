@@ -12,12 +12,12 @@ data "archive_file" "ingest_lambda_zip" {
 resource "aws_lambda_function" "ingest_log" {
   filename         = data.archive_file.ingest_lambda_zip.output_path
   function_name    = "simple-log-service-ingest-${var.environment}"
-  role            = aws_iam_role.ingest_lambda_role.arn
-  handler         = "index.lambda_handler"
+  role             = aws_iam_role.ingest_lambda_role.arn
+  handler          = "index.lambda_handler"
   source_code_hash = data.archive_file.ingest_lambda_zip.output_base64sha256
-  runtime         = "python3.11"
-  timeout         = 30
-  memory_size     = 256
+  runtime          = "python3.11"
+  timeout          = 30
+  memory_size      = 256
 
   environment {
     variables = {
@@ -49,12 +49,12 @@ data "archive_file" "read_recent_lambda_zip" {
 resource "aws_lambda_function" "read_recent" {
   filename         = data.archive_file.read_recent_lambda_zip.output_path
   function_name    = "simple-log-service-read-recent-${var.environment}"
-  role            = aws_iam_role.read_lambda_role.arn
-  handler         = "index.lambda_handler"
+  role             = aws_iam_role.read_lambda_role.arn
+  handler          = "index.lambda_handler"
   source_code_hash = data.archive_file.read_recent_lambda_zip.output_base64sha256
-  runtime         = "python3.11"
-  timeout         = 30
-  memory_size     = 256
+  runtime          = "python3.11"
+  timeout          = 30
+  memory_size      = 256
 
   environment {
     variables = {

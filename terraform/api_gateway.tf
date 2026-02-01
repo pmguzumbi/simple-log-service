@@ -160,7 +160,7 @@ resource "aws_lambda_permission" "read_recent_api_gateway" {
 # Outputs
 output "api_endpoint" {
   description = "API Gateway endpoint URL"
-  value       = "${aws_api_gateway_stage.log_api.invoke_url}"
+  value       = aws_api_gateway_stage.log_api.invoke_url
 }
 
 output "api_gateway_id" {

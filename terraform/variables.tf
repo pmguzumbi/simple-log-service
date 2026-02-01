@@ -19,7 +19,7 @@ variable "aws_region" {
 variable "enable_config" {
   description = "Enable AWS Config for compliance monitoring"
   type        = bool
-  default     = false  # Changed from true - you already have a Config recorder
+  default     = false # Changed from true - you already have a Config recorder
 }
 
 variable "config_snapshot_frequency" {

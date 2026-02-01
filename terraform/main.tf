@@ -2,7 +2,7 @@
 
 terraform {
   required_version = ">= 1.5.0"
-  
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -13,7 +13,7 @@ terraform {
       version = "~> 2.0"
     }
   }
-  
+
   # Optional: Configure S3 backend for state management
   # Uncomment and configure for production use
   # backend "s3" {
@@ -29,7 +29,7 @@ terraform {
 # AWS Provider configuration
 provider "aws" {
   region = var.aws_region
-  
+
   # Default tags applied to all resources
   default_tags {
     tags = {
@@ -45,7 +45,7 @@ provider "aws" {
 # Data source for available availability zones
 data "aws_availability_zones" "available" {
   state = "available"
-  
+
   # Filter to only include zones in the configured region
   filter {
     name   = "region-name"
@@ -56,13 +56,13 @@ data "aws_availability_zones" "available" {
 # Local variables for common values
 locals {
   account_id = data.aws_caller_identity.current.account_id
-  
+
   # Availability zones for multi-AZ deployment
   azs = slice(data.aws_availability_zones.available.names, 0, 2)
-  
+
   # Common resource naming prefix
   name_prefix = "${var.project_name}-${var.environment}"
-  
+
   # Common tags
   common_tags = {
     Project     = var.project_name

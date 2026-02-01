@@ -1,9 +1,9 @@
 # DynamoDB table for storing logs
 resource "aws_dynamodb_table" "logs" {
-  name           = "${var.project_name}-logs-${var.environment}"
-  billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "log_id"
-  
+  name         = "${var.project_name}-logs-${var.environment}"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "log_id"
+
   attribute {
     name = "log_id"
     type = "S"
