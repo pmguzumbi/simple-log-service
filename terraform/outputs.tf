@@ -1,6 +1,6 @@
 
 # outputs.tf - Terraform outputs for Simple Log Service
-# This file defines all output values for the infrastructure
+# This file defines output values that are NOT already defined in other files
 
 # DynamoDB outputs
 output "dynamodb_table_name" {
@@ -65,41 +65,10 @@ output "kms_cloudwatch_key_arn" {
   value       = aws_kms_key.cloudwatch.arn
 }
 
-# API Gateway outputs (removed duplicate - already in api_gateway.tf)
+# API Gateway outputs (NOT duplicated - only execution ARN)
 output "api_gateway_execution_arn" {
   description = "API Gateway execution ARN for IAM policies"
-  value       = aws_api_gateway_rest_api.log_service.execution_arn
-}
-
-output "api_gateway_id" {
-  description = "API Gateway REST API ID"
-  value       = aws_api_gateway_rest_api.log_service.id
-}
-
-# IAM role outputs
-output "log_ingest_role_arn" {
-  description = "ARN of the log ingest IAM role"
-  value       = aws_iam_role.log_ingest_role.arn
-}
-
-output "log_read_role_arn" {
-  description = "ARN of the log read IAM role"
-  value       = aws_iam_role.log_read_role.arn
-}
-
-output "log_full_access_role_arn" {
-  description = "ARN of the log full access IAM role"
-  value       = aws_iam_role.log_full_access_role.arn
-}
-
-output "ingest_lambda_role_arn" {
-  description = "ARN of the ingest Lambda execution role"
-  value       = aws_iam_role.ingest_lambda_role.arn
-}
-
-output "read_lambda_role_arn" {
-  description = "ARN of the read Lambda execution role"
-  value       = aws_iam_role.read_lambda_role.arn
+  value       = aws_api_gateway_rest_api.log_api.execution_arn
 }
 
 # CloudWatch outputs
@@ -123,5 +92,4 @@ output "aws_account_id" {
   description = "AWS account ID where resources are deployed"
   value       = data.aws_caller_identity.current.account_id
 }
-
 
