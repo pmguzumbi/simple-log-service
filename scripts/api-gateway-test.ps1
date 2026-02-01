@@ -1,4 +1,3 @@
-
 # Simple Log Service - API Gateway Test Script
 # Version: 2.2 - Tests API Gateway with IAM authentication
 # Date: 2026-02-01
@@ -372,4 +371,94 @@ if __name__ == "__main__":
                 try {
                     $errorResponse = $pythonOutput | ConvertFrom-Json
                     Write-Info "Error: $($errorResponse.error)"
-                    if ($errorResponse.status_code)
+                    if ($errorResponse.status_code) {
+                        Write-Info "Status Code: $($errorResponse.status_code)"
+                        Write-Info "Response Body: $($errorResponse.body)"
+                    }
+                }
+                catch {
+                    Write-Info "Error output: $pythonOutput"
+                }
+                $testFailed = $true
+            }
+            
+            # Clear credentials
+            Remove-Item Env:\AWS_ACCESS_KEY_ID, Env:\AWS_SECRET_ACCESS_KEY, Env:\AWS_SESSION_TOKEN -ErrorAction SilentlyContinue
+        }
+        
+        # STEP 5: Verify DynamoDB Data
+        Write-Step "Verifying DynamoDB Data"
+        
+        $tableInfo = aws dynamodb describe-table --table-name $TABLE_NAME --output json 2>&1 | ConvertFrom-Json
+        
+        if ($LASTEXITCODE -eq 0) {
+            Write-Pass "Table Status: $($tableInfo.Table.TableStatus)"
+            Write-Pass "Item Count: $($tableInfo.Table.ItemCount)"
+            
+            $tableSizeKB = [math]::Round($tableInfo.Table.TableSizeBytes / 1KB, 2)
+            Write-Pass "Table Size: $tableSizeKB KB"
+            
+            # Sample a few items from the table
+            Write-Info "Sampling recent items from DynamoDB..."
+            
+            $scanOutput = aws dynamodb scan `
+                --table-name $TABLE_NAME `
+                --limit 5 `
+                --output json 2>&1
+            
+            if ($LASTEXITCODE -eq 0) {
+                $scanResult = $scanOutput | ConvertFrom-Json
+                Write-Pass "Found $($scanResult.Count) items in table"
+                
+                if ($scanResult.Items.Count -gt 0) {
+                    Write-Info "Sample items:"
+                    foreach ($item in $scanResult.Items) {
+                        Write-Info "  - Service: $($item.service_name.S), Level: $($item.level.S), Message: $($item.message.S)"
+                    }
+                }
+            }
+        }
+    }
+    
+    # Cleanup
+    Remove-Item aws_sigv4_request.py, api-payload-*.json -ErrorAction SilentlyContinue
+    
+    if ($testFailed) {
+        Write-Host "`n========================================" -ForegroundColor Red
+        Write-Host "API GATEWAY TESTS FAILED" -ForegroundColor Red
+        Write-Host "========================================" -ForegroundColor Red
+        Write-Host "End Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor White
+        Write-Host ""
+        
+        Write-Info "Troubleshooting tips:"
+        Write-Info "1. Verify API Gateway method authorization is set to AWS_IAM"
+        Write-Info "2. Check IAM roles have execute-api:Invoke permission"
+        Write-Info "3. Ensure Lambda integration is configured correctly"
+        Write-Info "4. Review CloudWatch logs for API Gateway and Lambda"
+        Write-Info "5. Verify API Gateway resource policy allows IAM authentication"
+        
+        exit 1
+    }
+    else {
+        Write-Host "`n========================================" -ForegroundColor Green
+        Write-Host "ALL API GATEWAY TESTS PASSED" -ForegroundColor Green
+        Write-Host "========================================" -ForegroundColor Green
+        Write-Host "End Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor White
+        Write-Host ""
+        exit 0
+    }
+}
+catch {
+    Write-Host "`n========================================" -ForegroundColor Red
+    Write-Host "TEST FAILED WITH EXCEPTION" -ForegroundColor Red
+    Write-Host "========================================" -ForegroundColor Red
+    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "`nStack Trace:" -ForegroundColor Yellow
+    Write-Host $_.ScriptStackTrace -ForegroundColor Yellow
+    
+    # Cleanup
+    Remove-Item Env:\AWS_ACCESS_KEY_ID, Env:\AWS_SECRET_ACCESS_KEY, Env:\AWS_SESSION_TOKEN -ErrorAction SilentlyContinue
+    Remove-Item aws_sigv4_request.py, api-payload-*.json -ErrorAction SilentlyContinue
+    
+    exit 1
+}
