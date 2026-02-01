@@ -1,5 +1,7 @@
+```powershell
+
 # Simple Log Service - Basic Test Script with External ID Support
-# Version: 1.5 - Enhanced error handling and diagnostics
+# Version: 1.6 - Fixed UTF-8 encoding issue (no BOM)
 # Date: 2026-02-01
 
 #Requires -Version 5.1
@@ -15,7 +17,7 @@ param(
     [string]$Environment = "prod"
 )
 
-$ErrorActionPreference = "Continue"  # Changed to Continue to capture errors
+$ErrorActionPreference = "Continue"
 
 # Color-coded output functions
 function Write-Step { param([string]$Msg) Write-Host "`n[STEP] $Msg" -ForegroundColor Cyan }
@@ -114,7 +116,8 @@ try {
         timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
     } | ConvertTo-Json -Compress
     
-    $directPayload | Out-File "test-direct.json" -Encoding utf8 -NoNewline
+    # Save JSON without BOM using UTF8NoBOM encoding
+    [System.IO.File]::WriteAllText("$PWD\test-direct.json", $directPayload, [System.Text.UTF8Encoding]::new($false))
     
     $directOutput = aws lambda invoke `
         --function-name $INGEST_FUNCTION `
@@ -165,7 +168,6 @@ try {
         $assumedIdentity = aws sts get-caller-identity --output json 2>&1 | ConvertFrom-Json
         Write-Info "Assumed identity: $($assumedIdentity.Arn)"
         
-        # Verify the assumed role has Lambda invoke permission
         Write-Info "Testing Lambda invocation with assumed role..."
         
         $successCount = 0
@@ -177,7 +179,8 @@ try {
                 timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
             } | ConvertTo-Json -Compress
             
-            $payload | Out-File "test-payload-$i.json" -Encoding utf8 -NoNewline
+            # Save JSON without BOM using UTF8NoBOM encoding
+            [System.IO.File]::WriteAllText("$PWD\test-payload-$i.json", $payload, [System.Text.UTF8Encoding]::new($false))
             
             $invokeOutput = aws lambda invoke `
                 --function-name $INGEST_FUNCTION `
@@ -255,7 +258,8 @@ try {
                 limit = 10
             } | ConvertTo-Json -Compress
             
-            $readPayload | Out-File "read-payload.json" -Encoding utf8 -NoNewline
+            # Save JSON without BOM using UTF8NoBOM encoding
+            [System.IO.File]::WriteAllText("$PWD\read-payload.json", $readPayload, [System.Text.UTF8Encoding]::new($false))
             
             $readOutput = aws lambda invoke `
                 --function-name $READ_FUNCTION `
@@ -275,6 +279,10 @@ try {
                         Write-Info "  Service: $($sampleLog.service_name)"
                         Write-Info "  Level: $($sampleLog.level)"
                         Write-Info "  Message: $($sampleLog.message)"
+                        Write-Info "  Timestamp: $($sampleLog.timestamp)"
+                    }
+                    elseif ($successCount -gt 0) {
+                        Write-Info "No logs retrieved - data may not be consistent yet"
                     }
                 }
             }
@@ -302,6 +310,60 @@ try {
             
             if ($tableInfo.Table.SSEDescription.Status -eq "ENABLED") {
                 Write-Pass "Encryption: ENABLED"
+                if ($tableInfo.Table.SSEDescription.KMSMasterKeyArn) {
+                    Write-Info "KMS Key: $($tableInfo.Table.SSEDescription.KMSMasterKeyArn)"
+                }
+            }
+            else {
+                Write-Fail "Encryption: NOT ENABLED"
+            }
+            
+            # Check if point-in-time recovery is enabled
+            try {
+                $pitrStatus = aws dynamodb describe-continuous-backups --table-name $TABLE_NAME --output json 2>&1 | ConvertFrom-Json
+                if ($pitrStatus.ContinuousBackupsDescription.PointInTimeRecoveryDescription.PointInTimeRecoveryStatus -eq "ENABLED") {
+                    Write-Pass "Point-in-Time Recovery: ENABLED"
+                }
+                else {
+                    Write-Info "Point-in-Time Recovery: DISABLED"
+                }
+            }
+            catch {
+                Write-Info "Could not check Point-in-Time Recovery status"
+            }
+        }
+        
+        # STEP 7: Check CloudWatch Logs
+        Write-Step "Checking CloudWatch Logs"
+        
+        $logGroups = @("/aws/lambda/$INGEST_FUNCTION", "/aws/lambda/$READ_FUNCTION")
+        
+        foreach ($logGroup in $logGroups) {
+            try {
+                $streamsRaw = aws logs describe-log-streams `
+                    --log-group-name $logGroup `
+                    --order-by LastEventTime `
+                    --descending `
+                    --max-items 1 `
+                    --output json 2>&1
+                
+                if ($LASTEXITCODE -eq 0) {
+                    $streamInfo = $streamsRaw | ConvertFrom-Json
+                    if ($streamInfo.logStreams.Count -gt 0) {
+                        Write-Pass "Log group exists: $logGroup"
+                        $lastEventTime = [DateTimeOffset]::FromUnixTimeMilliseconds($streamInfo.logStreams[0].lastEventTimestamp).DateTime
+                        Write-Info "Last event: $($lastEventTime.ToString('yyyy-MM-dd HH:mm:ss'))"
+                    }
+                    else {
+                        Write-Info "Log group exists but no streams: $logGroup"
+                    }
+                }
+                else {
+                    Write-Info "Log group not accessible: $logGroup"
+                }
+            }
+            catch {
+                Write-Info "Could not check log group: $logGroup"
             }
         }
     }
@@ -340,3 +402,5 @@ catch {
     
     exit 1
 }
+
+```
