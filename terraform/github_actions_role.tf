@@ -1,4 +1,3 @@
-
 # IAM role for GitHub Actions to deploy infrastructure via OIDC
 resource "aws_iam_role" "github_actions_deployment" {
   name        = "GitHubActionsDeploymentRole"
