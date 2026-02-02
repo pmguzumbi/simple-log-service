@@ -246,7 +246,7 @@ Simple Log Service implements enterprise-grade security controls and compliance 
       "Sid": "Enable IAM User Permissions",
       "Effect": "Allow",
       "Principal": {
-        "AWS": "arn:aws:iam::033667696152:root"
+        "AWS": "arn:aws:iam::<Account ID>:test_role"
       },
       "Action": "kms:*",
       "Resource": "*"
