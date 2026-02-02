@@ -340,4 +340,4 @@ Version History
 • Comprehensive testing suite
 • Full documentation
 
-Built with ❤️ using AWS, Terraform, and Infrastructure as Code principles
+Built with using AWS, Terraform, and Infrastructure as Code principles
