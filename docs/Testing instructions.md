@@ -30,7 +30,7 @@ Purpose
 Tests Lambda functions directly with IAM role assumption to validate backend functionality.
 
 Script Location
-C:\simple-log-service\complete-test-script.ps1
+C:\simple-log-service\scripts\complete-test-script.ps1
 
 What It Tests
 ✅ Direct Lambda invocation (without assumed role)
@@ -70,7 +70,7 @@ Purpose
 Tests API Gateway endpoints with AWS SigV4 authentication to validate end-to-end API functionality.
 
 Script Location
-C:\simple-log-service\api-gateway-test.ps1
+C:\simple-log-service\scripts\api-gateway-test.ps1
 
 What It Tests
 ✅ Python dependencies (requests, requests-aws4auth)
@@ -224,8 +224,8 @@ Use Both Scripts when:
 Additional Resources
 
 Script Locations
-• Complete-Test-Script: C:\simple-log-service\complete-test-script.ps1
-• API-Gateway-Test: C:\simple-log-service\api-gateway-test.ps1
+• Complete-Test-Script: C:\simple-log-service\scripts\complete-test-script.ps1
+• API-Gateway-Test: C:\simple-log-service\scripts\api-gateway-test.ps1
 • Terraform Configuration: C:\simple-log-service\terraform\
 
 AWS Resources
