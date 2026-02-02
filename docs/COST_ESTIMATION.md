@@ -1,450 +1,284 @@
-# Cost Estimation
-
-## Overview
-
-This document provides detailed cost estimates for running the Simple Log Service on AWS. Costs are calculated for different usage tiers and environments.
-
-## Pricing Assumptions (January 2026)
-
-### AWS Service Pricing (eu-west-2)
-
-| Service | Unit | Price |
-|---------|------|-------|
-| DynamoDB Write | Per WCU-hour | $0.00065 |
-| DynamoDB Read | Per RCU-hour | $0.00013 |
-| DynamoDB Storage | Per GB-month | $0.25 |
-| Lambda Requests | Per 1M requests | $0.20 |
-| Lambda Duration | Per GB-second | $0.0000166667 |
-| API Gateway | Per 1M requests | $3.50 |
-| CloudWatch Logs | Per GB ingested | $0.50 |
-| CloudWatch Logs | Per GB stored | $0.03 |
-| KMS | Per 10,000 requests | $0.03 |
-| KMS | Per key per month | $1.00 |
-| SNS | Per 1M requests | $0.50 |
-| AWS Config | Per rule per month | $2.00 |
-| AWS Config | Per item recorded | $0.003 |
-| S3 Standard | Per GB-month | $0.023 |
-| Data Transfer Out | Per GB | $0.09 |
-
-## Cost Breakdown by Component
-
-### 1. DynamoDB
-
-#### Base Configuration (5 RCU/WCU)
-```
-Write Capacity: 5 WCU × 730 hours × $0.00065 = $2.37
-Read Capacity: 5 RCU × 730 hours × $0.00013 = $0.47
-GSI Write: 5 WCU × 730 hours × $0.00065 = $2.37
-GSI Read: 5 RCU × 730 hours × $0.00013 = $0.47
-Storage: 1 GB × $0.25 = $0.25
-Point-in-Time Recovery: 1 GB × $0.20 = $0.20
-
-Monthly Total: $6.13
-```
-
-#### Moderate Load (Average 20 RCU/WCU)
-```
-Write Capacity: 20 WCU × 730 hours × $0.00065 = $9.49
-Read Capacity: 20 RCU × 730 hours × $0.00013 = $1.90
-GSI Write: 20 WCU × 730 hours × $0.00065 = $9.49
-GSI Read: 20 RCU × 730 hours × $0.00013 = $1.90
-Storage: 10 GB × $0.25 = $2.50
-Point-in-Time Recovery: 10 GB × $0.20 = $2.00
-
-Monthly Total: $27.28
-```
-
-#### High Load (Average 50 RCU/WCU)
-```
-Write Capacity: 50 WCU × 730 hours × $0.00065 = $23.73
-Read Capacity: 50 RCU × 730 hours × $0.00013 = $4.75
-GSI Write: 50 WCU × 730 hours × $0.00065 = $23.73
-GSI Read: 50 RCU × 730 hours × $0.00013 = $4.75
-Storage: 50 GB × $0.25 = $12.50
-Point-in-Time Recovery: 50 GB × $0.20 = $10.00
-
-Monthly Total: $79.46
-```
-
-### 2. Lambda Functions
-
-#### Low Volume (100K requests/month)
-```
-Requests: 100,000 × $0.20 / 1,000,000 = $0.02
-Duration (256 MB, 100ms avg):
-  - Compute: 100,000 × 0.1s × 0.25 GB × $0.0000166667 = $0.04
-
-Monthly Total: $0.06
-```
-
-#### Moderate Volume (1M requests/month)
-```
-Requests: 1,000,000 × $0.20 / 1,000,000 = $0.20
-Duration (256 MB, 100ms avg):
-  - Compute: 1,000,000 × 0.1s × 0.25 GB × $0.0000166667 = $0.42
-
-Monthly Total: $0.62
-```
-
-#### High Volume (10M requests/month)
-```
-Requests: 10,000,000 × $0.20 / 1,000,000 = $2.00
-Duration (256 MB, 100ms avg):
-  - Compute: 10,000,000 × 0.1s × 0.25 GB × $0.0000166667 = $4.17
-
-Monthly Total: $6.17
-```
-
-### 3. API Gateway
-
-#### Low Volume (100K requests/month)
-```
-Requests: 100,000 × $3.50 / 1,000,000 = $0.35
-
-Monthly Total: $0.35
-```
-
-#### Moderate Volume (1M requests/month)
-```
-Requests: 1,000,000 × $3.50 / 1,000,000 = $3.50
-
-Monthly Total: $3.50
-```
-
-#### High Volume (10M requests/month)
-```
-Requests: 10,000,000 × $3.50 / 1,000,000 = $35.00
-
-Monthly Total: $35.00
-```
-
-### 4. CloudWatch
-
-#### Low Volume
-```
-Logs Ingested: 1 GB × $0.50 = $0.50
-Logs Stored: 0.5 GB × $0.03 = $0.02
-Metrics: 10 custom metrics × $0.30 = $3.00
-Alarms: 6 alarms × $0.10 = $0.60
-Dashboard: 1 dashboard × $3.00 = $3.00
-
-Monthly Total: $7.12
-```
-
-#### Moderate Volume
-```
-Logs Ingested: 5 GB × $0.50 = $2.50
-Logs Stored: 2 GB × $0.03 = $0.06
-Metrics: 20 custom metrics × $0.30 = $6.00
-Alarms: 6 alarms × $0.10 = $0.60
-Dashboard: 1 dashboard × $3.00 = $3.00
-
-Monthly Total: $12.16
-```
-
-#### High Volume
-```
-Logs Ingested: 20 GB × $0.50 = $10.00
-Logs Stored: 10 GB × $0.03 = $0.30
-Metrics: 50 custom metrics × $0.30 = $15.00
-Alarms: 10 alarms × $0.10 = $1.00
-Dashboard: 1 dashboard × $3.00 = $3.00
-
-Monthly Total: $29.30
-```
-
-### 5. KMS
-
-```
-Key: 1 key × $1.00 = $1.00
-Requests (100K/month): 100,000 × $0.03 / 10,000 = $0.30
-
-Monthly Total: $1.30
-```
-
-### 6. SNS
-
-```
-Notifications: 1,000 × $0.50 / 1,000,000 = $0.00
-Email Delivery: Free
-
-Monthly Total: $0.00 (negligible)
-```
-
-### 7. AWS Config (Optional)
-
-```
-Rules: 5 rules × $2.00 = $10.00
-Configuration Items: 10,000 × $0.003 = $30.00
-
-Monthly Total: $40.00
-```
-
-### 8. S3 (Config Bucket)
-
-```
-Storage: 1 GB × $0.023 = $0.02
-Requests: Negligible
-
-Monthly Total: $0.02
-```
-
-### 9. X-Ray (Optional)
-
-```
-Traces Recorded: 100,000 × $5.00 / 1,000,000 = $0.50
-Traces Retrieved: 10,000 × $0.50 / 1,000,000 = $0.01
-
-Monthly Total: $0.51
-```
-
-## Total Cost Estimates
-
-### Development Environment (Low Volume)
-
-| Component | Monthly Cost |
-|-----------|--------------|
-| DynamoDB | $6.13 |
-| Lambda | $0.06 |
-| API Gateway | $0.35 |
-| CloudWatch | $7.12 |
-| KMS | $1.30 |
-| SNS | $0.00 |
-| **Total** | **$14.96** |
-
-**With AWS Config**: $54.98
-
-### Staging Environment (Moderate Volume)
-
-| Component | Monthly Cost |
-|-----------|--------------|
-| DynamoDB | $27.28 |
-| Lambda | $0.62 |
-| API Gateway | $3.50 |
-| CloudWatch | $12.16 |
-| KMS | $1.30 |
-| SNS | $0.00 |
-| AWS Config | $40.02 |
-| **Total** | **$84.88** |
-
-### Production Environment (High Volume)
-
-| Component | Monthly Cost |
-|-----------|--------------|
-| DynamoDB | $79.46 |
-| Lambda | $6.17 |
-| API Gateway | $35.00 |
-| CloudWatch | $29.30 |
-| KMS | $1.30 |
-| SNS | $0.00 |
-| AWS Config | $40.02 |
-| X-Ray | $0.51 |
-| **Total** | **$191.76** |
-
-## Cost Optimization Strategies
-
-### 1. DynamoDB Optimization
-
-**Strategy**: Use on-demand billing for unpredictable workloads
-```
-Savings: Up to 30% for variable traffic
-Implementation: Change billing_mode to "PAY_PER_REQUEST"
-```
-
-**Strategy**: Implement TTL for automatic data expiration
-```
-Savings: Reduce storage costs by 50-70%
-Implementation: Add TTL attribute to items
-```
-
-**Strategy**: Use DynamoDB Standard-IA for infrequently accessed data
-```
-Savings: 60% on storage costs
-Implementation: Enable table class = STANDARD_INFREQUENT_ACCESS
-```
-
-### 2. Lambda Optimization
-
-**Strategy**: Right-size memory allocation
-```
-Current: 256 MB
-Optimized: 128 MB (if sufficient)
-Savings: 50% on compute costs
-```
-
-**Strategy**: Reduce cold starts with provisioned concurrency
-```
-Cost: $0.015 per GB-hour
-Benefit: Faster response times
-Use Case: Production only
-```
-
-### 3. CloudWatch Optimization
-
-**Strategy**: Reduce log retention
-```
-Current: 7 days
-Optimized: 3 days for dev
-Savings: 40% on storage
-```
-
-**Strategy**: Use metric filters instead of custom metrics
-```
-Savings: $0.30 per metric per month
-Implementation: Extract metrics from logs
-```
-
-### 4. API Gateway Optimization
-
-**Strategy**: Use HTTP API instead of REST API
-```
-Savings: 70% on request costs
-Limitation: Fewer features
-```
-
-**Strategy**: Enable caching
-```
-Cost: $0.02 per GB-hour
-Benefit: Reduced Lambda invocations
-```
-
-### 5. AWS Config Optimization
-
-**Strategy**: Disable in development
-```
-Savings: $40/month per environment
-Risk: No compliance monitoring
-```
-
-**Strategy**: Reduce recording frequency
-```
-Savings: 50% on configuration items
-Implementation: Record only on change
-```
-
-## Cost Monitoring
-
-### Set Up Budget Alerts
-
-```bash
-aws budgets create-budget \
-  --account-id 123456789012 \
-  --budget '{
-    "BudgetName": "SimpleLogServiceBudget",
-    "BudgetLimit": {
-      "Amount": "100",
-      "Unit": "USD"
-    },
-    "TimeUnit": "MONTHLY",
-    "BudgetType": "COST"
-  }'
-```
-
-### CloudWatch Cost Anomaly Detection
-
-Enable AWS Cost Anomaly Detection:
-1. Navigate to AWS Cost Management
-2. Enable Cost Anomaly Detection
-3. Set threshold: $10 increase
-4. Configure SNS notifications
-
-### Daily Cost Reports
-
-```bash
-aws ce get-cost-and-usage \
-  --time-period Start=2026-01-01,End=2026-01-31 \
-  --granularity DAILY \
-  --metrics BlendedCost \
-  --group-by Type=SERVICE
-```
-
-## Cost Allocation Tags
-
-Apply tags for cost tracking:
-```hcl
-default_tags {
-  tags = {
-    Project     = "SimpleLogService"
-    Environment = var.environment
-    CostCenter  = "Engineering"
-    Owner       = "DevOps"
-  }
-}
-```
-
-## Reserved Capacity (Production)
-
-### DynamoDB Reserved Capacity
-
-**Commitment**: 1 year
-**Savings**: 53% compared to on-demand
-**Minimum**: 100 WCU/RCU
-
-```
-Standard: 100 WCU × 730 hours × $0.00065 = $47.45/month
-Reserved: 100 WCU × 730 hours × $0.00031 = $22.63/month
-Savings: $24.82/month ($297.84/year)
-```
-
-## Free Tier Benefits (First 12 Months)
-
-- **Lambda**: 1M requests + 400,000 GB-seconds/month
-- **DynamoDB**: 25 GB storage + 25 WCU + 25 RCU
-- **API Gateway**: 1M requests/month
-- **CloudWatch**: 10 custom metrics + 10 alarms
-- **KMS**: 20,000 requests/month
-
-**Estimated Free Tier Savings**: $15-20/month
-
-## Annual Cost Projection
-
-### Development (with Free Tier)
-```
-Monthly: $0-5 (first 12 months)
-Monthly: $15 (after 12 months)
-Annual: $30-60 (first year)
-Annual: $180 (subsequent years)
-```
-
-### Production (High Volume)
-```
-Monthly: $192
-Annual: $2,304
-With Reserved Capacity: $1,800/year
-Savings: $504/year (21.88%)
-```
-
-## Cost Comparison
-
-### vs. Self-Hosted Solution
-
-| Component | AWS Serverless | Self-Hosted EC2 |
-|-----------|----------------|-----------------|
-| Compute | $6.17 | $50.00 |
-| Storage | $79.46 | $30.00 |
-| Monitoring | $29.30 | $0.00 |
-| Backup | Included | $10.00 |
-| **Total** | **$191.76** | **$90.00** |
-
-**Note**: Self-hosted requires:
-- Operational overhead
-- Maintenance time
-- Security patching
-- Scaling management
-
-**True Cost**: Self-hosted TCO is typically 2-3x higher when including operational costs.
-
-## Conclusion
-
-**Recommended Configuration**:
-- **Development**: $15-25/month (without Config)
-- **Staging**: $45-65/month (with Config)
-- **Production**: $150-200/month (with Config + optimization)
-
-**Cost Control Measures**:
-1. Enable auto-scaling
-2. Implement TTL for old logs
-3. Use appropriate log retention
-4. Monitor with budget alerts
-5. Review costs monthly
-6. Optimize based on usage patterns
+Simple Log Service - Cost Estimation & Optimization
+
+Version: 2.0  
+Last Updated: 2026-02-02  
+Status: Production
+
+Table of Contents
+Overview
+Monthly Cost Breakdown
+Cost by Service
+Usage Scenarios
+Cost Optimization Strategies
+Cost Monitoring
+Budget Alerts
+
+Overview
+
+Simple Log Service is designed for cost efficiency using serverless, pay-per-use AWS services. This document provides detailed cost estimates and optimization strategies.
+
+Pricing Region: us-east-1 (N. Virginia)  
+Pricing Date: February 2026  
+Currency: USD
+
+Monthly Cost Breakdown
+
+Base Infrastructure (Fixed Costs)
+
+| Service | Component | Monthly Cost |
+|---------|-----------|--------------|
+| KMS | Customer-managed key | $1.00 |
+| KMS | API requests (10K/month) | $0.03 |
+| CloudWatch | Log storage (1 GB) | $0.50 |
+| CloudWatch | Metrics (10 custom) | $0.30 |
+| CloudWatch | Alarms (3 alarms) | $0.30 |
+| Subtotal | Fixed Costs | $2.13 |
+
+Variable Costs (Usage-Based)
+
+Scenario: Low Volume (10K logs/day)
+
+| Service | Usage | Unit Cost | Monthly Cost |
+|---------|-------|-----------|--------------|
+| API Gateway | 300K requests | $3.50/million | $1.05 |
+| Lambda (Ingest) | 300K invocations | $0.20/million | $0.06 |
+| Lambda (Ingest) | 7.5M GB-seconds | $0.0000166667/GB-sec | $0.13 |
+| Lambda (Read) | 100K invocations | $0.20/million | $0.02 |
+| Lambda (Read) | 2.5M GB-seconds | $0.0000166667/GB-sec | $0.04 |
+| DynamoDB | 300K writes | $1.25/million | $0.38 |
+| DynamoDB | 100K reads | $0.25/million | $0.03 |
+| DynamoDB | 1 GB storage | $0.25/GB | $0.25 |
+| Subtotal | Variable Costs | | $1.96 |
+| Total | Low Volume | | $4.09/month |
+
+Scenario: Medium Volume (100K logs/day)
+
+| Service | Usage | Unit Cost | Monthly Cost |
+|---------|-------|-----------|--------------|
+| API Gateway | 3M requests | $3.50/million | $10.50 |
+| Lambda (Ingest) | 3M invocations | $0.20/million | $0.60 |
+| Lambda (Ingest) | 75M GB-seconds | $0.0000166667/GB-sec | $1.25 |
+| Lambda (Read) | 1M invocations | $0.20/million | $0.20 |
+| Lambda (Read) | 25M GB-seconds | $0.0000166667/GB-sec | $0.42 |
+| DynamoDB | 3M writes | $1.25/million | $3.75 |
+| DynamoDB | 1M reads | $0.25/million | $0.25 |
+| DynamoDB | 10 GB storage | $0.25/GB | $2.50 |
+| Subtotal | Variable Costs | | $19.47 |
+| Total | Medium Volume | | $21.60/month |
+
+Scenario: High Volume (1M logs/day)
+
+| Service | Usage | Unit Cost | Monthly Cost |
+|---------|-------|-----------|--------------|
+| API Gateway | 30M requests | $3.50/million | $105.00 |
+| Lambda (Ingest) | 30M invocations | $0.20/million | $6.00 |
+| Lambda (Ingest) | 750M GB-seconds | $0.0000166667/GB-sec | $12.50 |
+| Lambda (Read) | 10M invocations | $0.20/million | $2.00 |
+| Lambda (Read) | 250M GB-seconds | $0.0000166667/GB-sec | $4.17 |
+| DynamoDB | 30M writes | $1.25/million | $37.50 |
+| DynamoDB | 10M reads | $0.25/million | $2.50 |
+| DynamoDB | 100 GB storage | $0.25/GB | $25.00 |
+| Subtotal | Variable Costs | | $194.67 |
+| Total | High Volume | | $196.80/month |
+
+Cost by Service
+
+API Gateway
+
+Pricing Model: Pay-per-request  
+Unit Cost: $3.50 per million requests
+
+Cost Breakdown:
+• REST API requests: $3.50/million
+• Data transfer out: $0.09/GB (first 10 TB)
+• CloudWatch logs: Included in CloudWatch costs
+
+Optimization:
+• Enable caching for read-heavy workloads ($0.02/hour for 0.5 GB cache)
+• Use regional endpoints (lower cost than edge-optimized)
+• Implement request throttling to prevent abuse
+
+Lambda
+
+Pricing Model: Pay-per-invocation + compute time  
+Unit Costs:
+• Invocations: $0.20 per million
+• Compute: $0.0000166667 per GB-second
+
+Memory Configuration:
+• Ingest Lambda: 256 MB
+• Read Lambda: 256 MB
+
+Average Duration:
+• Ingest: 50ms (warm), 200ms (cold)
+• Read: 100ms (warm), 250ms (cold)
+
+Cost Calculation Example (Ingest):
+
+Optimization:
+• Use provisioned concurrency for predictable workloads ($0.0000041667/GB-second)
+• Optimize memory allocation (256 MB is cost-effective)
+• Reduce cold starts with Lambda SnapStart (Java only)
+
+DynamoDB
+
+Pricing Model: On-demand (pay-per-request)  
+Unit Costs:
+• Write requests: $1.25 per million
+• Read requests: $0.25 per million
+• Storage: $0.25 per GB-month
+
+Cost Breakdown:
+• 1 write request unit (WRU) = 1 KB
+• 1 read request unit (RRU) = 4 KB
+• Point-in-time recovery: 20% of storage cost
+• Backups: $0.10 per GB-month
+
+Optimization:
+• Use on-demand for unpredictable workloads
+• Switch to provisioned capacity for steady workloads (50% savings)
+• Enable auto-scaling for provisioned capacity
+• Archive old logs to S3 ($0.023/GB-month)
+
+KMS
+
+Pricing Model: Fixed + pay-per-request  
+Unit Costs:
+• Customer-managed key: $1.00/month
+• API requests: $0.03 per 10,000 requests
+
+Cost Breakdown:
+• Key storage: $1.00/month
+• Encrypt/decrypt operations: $0.03/10K
+• Key rotation: Included
+
+Optimization:
+• Use AWS-managed keys for non-sensitive data (free)
+• Batch encrypt/decrypt operations
+• Cache decrypted data in Lambda (within security policy)
+
+CloudWatch
+
+Pricing Model: Pay-per-use  
+Unit Costs:
+• Log ingestion: $0.50 per GB
+• Log storage: $0.03 per GB-month
+• Metrics: $0.30 per custom metric
+• Alarms: $0.10 per alarm
+
+Cost Breakdown:
+• Lambda logs: ~1 GB/month (low volume)
+• API Gateway logs: ~0.5 GB/month (low volume)
+• Custom metrics: 10 metrics × $0.30 = $3.00
+• Alarms: 3 alarms × $0.10 = $0.30
+
+Optimization:
+• Set log retention to 7 days (vs. indefinite)
+• Use log sampling for high-volume logs
+• Aggregate metrics to reduce custom metric count
+• Use CloudWatch Logs Insights instead of exporting to S3
+
+Usage Scenarios
+
+Scenario 1: Development Environment
+
+Usage:
+• 1K logs/day (30K/month)
+• Minimal read operations
+• 7-day log retention
+
+Monthly Cost: ~$2.50
+
+Breakdown:
+• Fixed costs: $2.13
+• API Gateway: $0.11
+• Lambda: $0.05
+• DynamoDB: $0.15
+• CloudWatch: $0.06
+
+Scenario 2: Small Production (Startup)
+
+Usage:
+• 50K logs/day (1.5M/month)
+• Moderate read operations (500K/month)
+• 7-day log retention
+
+Monthly Cost: ~$10.50
+
+Breakdown:
+• Fixed costs: $2.13
+• API Gateway: $5.25
+• Lambda: $0.75
+• DynamoDB: $2.00
+• CloudWatch: $0.37
+
+Scenario 3: Medium Production (SMB)
+
+Usage:
+• 100K logs/day (3M/month)
+• High read operations (1M/month)
+• 7-day log retention
+
+Monthly Cost: ~$21.60
+
+Breakdown:
+• Fixed costs: $2.13
+• API Gateway: $10.50
+• Lambda: $1.47
+• DynamoDB: $6.25
+• CloudWatch: $1.25
+
+Scenario 4: Large Production (Enterprise)
+
+Usage:
+• 1M logs/day (30M/month)
+• Very high read operations (10M/month)
+• 7-day log retention
+
+Monthly Cost: ~$196.80
+
+Breakdown:
+• Fixed costs: $2.13
+• API Gateway: $105.00
+• Lambda: $24.67
+• DynamoDB: $65.00
+• CloudWatch: $0.00 (within free tier for logs)
+
+Cost Optimization Strategies
+DynamoDB Optimization
+
+Switch to Provisioned Capacity (High Volume):
+• Provisioned: $0.00065/WCU-hour, $0.00013/RCU-hour
+• On-demand: $1.25/million writes, $0.25/million reads
+• Savings: ~50% for steady workloads
+
+Example (1M logs/day):
+• On-demand: $37.50/month (writes)
+• Provisioned: 350 WCU × $0.00065 × 730 hours = $16.61/month
+• Savings: $20.89/month (56%)
+
+Implementation:
+
+API Gateway Caching
+
+Enable Response Caching (Read-Heavy):
+• Cache size: 0.5 GB
+• Cost: $0.02/hour = $14.60/month
+• Savings: Reduce Lambda invocations by 80%
+
+Example (1M reads/day):
+• Without cache: $2.00 (Lambda) + $2.50 (DynamoDB) = $4.50
+• With cache: $0.40 (Lambda) + $0.50 (DynamoDB) + $14.60 (cache) = $15.50
+• Net cost increase: $11.00 (not cost-effective for low volume)
+
+Recommendation: Only enable for > 10M reads/month
+
+Log Archival to S3
+
+Archive Old Logs (> 30 days):
+• DynamoDB: $0.25/GB-month
+• S3 Standard: $0.023/GB-month
+• Savings: 90.8%
+
+Implementation:
+• Use DynamoDB S
