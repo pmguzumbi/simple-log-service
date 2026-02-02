@@ -138,8 +138,7 @@ def run_load_test():
     print(f"Requests/Second: {NUM_REQUESTS/total_time:.2f}")
     
     if durations:
-        print("
-Response Time Statistics (ms):")
+        print("Response Time Statistics (ms):")
         print(f"  Min: {min(durations):.2f}")
         print(f"  Max: {max(durations):.2f}")
         print(f"  Mean: {statistics.mean(durations):.2f}")
@@ -149,8 +148,7 @@ Response Time Statistics (ms):")
         print(f"  P99: {statistics.quantiles(durations, n=100)[98]:.2f}")
     
     if failed:
-        print("
-Failed Requests:")
+        print("Failed Requests:")
         for result in failed[:5]:  # Show first 5 failures
             print(f"  Request {result['request_id']}: {result.get('error', 'Unknown error')}")
     
