@@ -128,8 +128,7 @@ def run_load_test():
     durations = [r["duration_ms"] for r in successful]
     
     # Print results
-    print("
-" + "=" * 60)
+    print("" + "=" * 60)
     print("Load Test Results")
     print("=" * 60)
     print(f"Total Requests: {NUM_REQUESTS}")
