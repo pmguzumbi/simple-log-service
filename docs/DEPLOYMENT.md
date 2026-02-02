@@ -21,216 +21,172 @@ Security Checklist
 Prerequisites
 
 Required Software
-• Terraform: >= 1.5.0 (Install)
-• AWS CLI: >= 2.0 (Install)
-• Python: 3.12 (Install)
-• Git: Latest version (Install)
-• PowerShell: 5.1+ (Windows) or PowerShell Core (cross-platform)
-• VS Code: Recommended IDE (Install)
 
-Verify Installations:
+Install the following tools before deployment:
+
+Terraform (>= 1.5.0)
+
+AWS CLI (>= 2.0)
+
+Python 3.12
+
+Git
+
+PowerShell (5.1+ or PowerShell Core)
 
 AWS Account Requirements
 • Active AWS account (Account ID: 033667696152)
-• IAM user with administrator access (or specific permissions below)
+• IAM user with administrator access
 • AWS CLI configured with credentials
 • Access to us-east-1 region (N. Virginia)
 
 Required IAM Permissions
 
-Minimum Required Permissions:
+Create an IAM policy with these permissions:
 
 Initial Setup
-Clone Repository
 
-Configure AWS Credentials
+Step 1: Clone Repository
 
-Verify Credentials:
+Step 2: Configure AWS Credentials
 
-Expected Output:
+When prompted, enter:
+• AWS Access Key ID: YOURACCESSKEY
+• AWS Secret Access Key: YOURSECRETKEY
+• Default region name: us-east-1
+• Default output format: json
 
-Review Configuration
+Verify credentials:
 
-Edit terraform/variables.tf to customize:
+Expected output:
+
+Step 3: Review Configuration
+
+Edit terraform/variables.tf to customize settings:
 
 Deployment Steps
 
 Step 1: Initialize Terraform
 
-Expected Output:
+Expected output:
 
-Troubleshooting:
-• If init fails, delete .terraform/ and .terraform.lock.hcl, then retry
-• Ensure internet connectivity for provider downloads
+If initialization fails:
 
 Step 2: Validate Configuration
 
-Expected Output:
-
-If Validation Fails:
-• Check syntax errors in .tf files
-• Verify variable types and values
-• Review Terraform version compatibility
+Expected output:
 
 Step 3: Plan Deployment
 
-Review the Plan:
-• Expected Resources: ~25-30 resources
+Review the plan output. Expected resources: ~25-30 resources including:
 • 1 DynamoDB table
 • 2 Lambda functions
 • 1 API Gateway (REST API)
 • 1 KMS customer-managed key
-• 6 IAM roles (Lambda execution + access roles)
+• 6 IAM roles
 • 3 CloudWatch log groups
 • 3 CloudWatch alarms
 • 1 SNS topic
 • 4 AWS Config rules
-• Supporting resources (policies, permissions, etc.)
-
-Key Resources to Verify:
-• DynamoDB table: simple-log-service-logs-prod
-• Lambda functions: simple-log-service-ingest-prod, simple-log-service-read-recent-prod
-• API Gateway: simple-log-service-prod
-• KMS key alias: alias/simple-log-service-prod
 
 Step 4: Apply Deployment
 
-Deployment Timeline:
-• Total Duration: 5-10 minutes
-• DynamoDB table: ~2 minutes
-• Lambda functions: ~1 minute each
-• API Gateway: ~2 minutes
-• KMS key: ~1 minute
-• IAM roles: ~1 minute
-• CloudWatch resources: ~1 minute
+Deployment takes approximately 5-10 minutes.
 
-Expected Output:
+Expected output:
 
 Step 5: Verify Deployment
 
-Verify in AWS Console:
-DynamoDB: https://console.aws.amazon.com/dynamodbv2/home?region=us-east-1#tables
-Lambda: https://console.aws.amazon.com/lambda/home?region=us-east-1#/functions
-API Gateway: https://console.aws.amazon.com/apigateway/home?region=us-east-1#/apis
-KMS: https://console.aws.amazon.com/kms/home?region=us-east-1#/kms/keys
+Get specific outputs:
+
+Save outputs to file:
 
 Post-Deployment Configuration
+
 Confirm SNS Subscription
 
-If you provided an email address in variables.tf:
-Check your email inbox (including spam folder)
-Look for email from: AWS Notifications 
+Check your email for AWS SNS subscription confirmation:
+Look for email from: AWS Notifications
 Subject: AWS Notification - Subscription Confirmation
 Click the confirmation link
-Verify subscription in AWS Console:
 
-Expected Output:
+Verify subscription:
 
 Verify IAM Roles
 
-Check Role Trust Policies:
+Check ingest role:
 
-Verify External IDs:
-• Ingest: simple-log-service-ingest-prod
-• Read: simple-log-service-read-prod
-• Full Access: simple-log-service-full-prod
+Check read role:
+
+Check full access role:
 
 Verify KMS Key
 
-Check Key Status:
+Get key ID:
 
-Expected Output:
+Describe key:
+
+Check key rotation:
+
+Expected output:
 
 Verify DynamoDB Configuration
 
-Check Table Details:
-
-Expected Output:
+Expected output:
 
 Testing Deployment
 
-Test Script 1: Complete Lambda Test
+Test 1: Complete Lambda Test
 
-Purpose: Validates Lambda functions with IAM role assumption
+Expected output:
 
-Expected Output:
+Test 2: API Gateway Test
 
-Test Script 2: API Gateway Test
+Expected output:
 
-Purpose: Validates API Gateway endpoints with AWS SigV4 authentication
+Test 3: Python API Test
 
-Expected Output:
-
-Test Script 3: Python API Test
-
-Purpose: Python-based API testing with pytest
-
-Expected Output:
+Expected output:
 
 Environment-Specific Deployments
 
 Development Environment
 
-Configuration:
-• Lower capacity settings
-• Deletion protection disabled
-• Shorter log retention (3 days)
-• Reduced alarm thresholds
-
-Deploy:
-
 Staging Environment
 
-Configuration:
-• Production-like settings
-• Deletion protection enabled
-• Standard log retention (7 days)
-• Production alarm thresholds
-
-Deploy:
-
 Production Environment
-
-Configuration:
-• Maximum security settings
-• Deletion protection enabled
-• Extended log retention (7 days)
-• Strict alarm thresholds
-• Point-in-time recovery enabled
-
-Deploy:
 
 Updating Deployment
 
 Update Lambda Functions
 
-Scenario: Modified Lambda code in lambda/ingest/index.py or lambda/read_recent/index.py
-
-Note: Terraform automatically creates new Lambda deployment packages when code changes are detected.
+After modifying Lambda code:
 
 Update Infrastructure Configuration
 
-Scenario: Modified Terraform files (e.g., increased DynamoDB capacity)
-
-Example: Increase Lambda Memory
+Example - increase Lambda memory:
 
 Update Variables
 
-Scenario: Changed configuration in variables.tf
-
 Rollback Procedures
 
-Rollback to Previous Terraform State
+Rollback to Previous Git Version
 
-Scenario: Recent deployment caused issues
+View commit history:
 
-Emergency Rollback (Git-Based)
+Checkout previous version:
 
-Scenario: Critical issue requires immediate rollback
+Destroy current deployment:
+
+Redeploy previous version:
+
+Return to main branch:
 
 Rollback Lambda Function Only
 
-Scenario: Lambda code issue, infrastructure is fine
+Revert Lambda code:
+
+Redeploy Lambda:
 
 Monitoring Deployment
 
@@ -240,117 +196,102 @@ Ingest Lambda:
 
 Read Lambda:
 
-Filter by Error:
+Filter by error:
 
 View API Gateway Logs
 
 Check DynamoDB Metrics
 
-Consumed Capacity:
+Consumed capacity:
 
-Throttled Requests:
+Throttled requests:
 
 Check CloudWatch Alarms
+
+List all alarms:
+
+Check specific alarm:
 
 Troubleshooting
 
 Issue 1: Terraform Init Fails
 
-Symptoms:
+Clear Terraform cache:
 
-Solutions:
+If behind proxy:
 
 Issue 2: Lambda Deployment Fails
 
-Symptoms:
+Check Lambda package:
 
-Solutions:
+Verify Lambda code syntax:
+
+Manually create package:
+
+Verify package contents:
 
 Issue 3: API Gateway Returns 403 Forbidden
 
-Symptoms:
+Verify AWS credentials:
 
-Solutions:
-Verify AWS Credentials:
-Check IAM Role Permissions:
-Verify External ID:
-• Ensure external ID matches: simple-log-service-ingest-prod
-Test Role Assumption:
-Check API Gateway Authorization:
+Check IAM role permissions:
+
+Test role assumption:
 
 Issue 4: DynamoDB Throttling
 
-Symptoms:
+Check current capacity:
 
-Solutions:
-Check Current Capacity:
-Switch to On-Demand (if using provisioned):
-Increase Provisioned Capacity:
+Switch to on-demand:
+
+Increase provisioned capacity:
 
 Issue 5: KMS Access Denied
 
-Symptoms:
+Check KMS key policy:
 
-Solutions:
-Check KMS Key Policy:
-Verify Lambda Execution Role:
-Update KMS Key Policy (if needed):
-• Edit terraform/kms.tf
-• Add Lambda execution role to key policy
-• Apply changes: terraform apply
+Verify Lambda execution role:
 
 Issue 6: CloudWatch Logs Not Appearing
 
-Symptoms:
-• Lambda executes successfully but no logs in CloudWatch
+Check log group exists:
 
-Solutions:
-Check Log Group Exists:
-Verify Lambda Execution Role:
-Check Lambda Configuration:
+Verify Lambda execution role:
+
+Check Lambda configuration:
 
 Issue 7: Pytest Cache Access Denied
 
-Symptoms:
+Delete pytest cache:
 
-Solutions:
-Delete Pytest Cache:
-Update lambda.tf to Exclude Test Directories:
-Reinitialize and Apply:
+Update lambda.tf to exclude test directories:
+
+Reinitialize and apply:
 
 Cleanup
 
 Remove All Resources
 
-Warning: This will permanently delete all data and resources.
+Disable deletion protection:
 
-Confirmation Required:
-• Type yes when prompted
-• Destruction takes 5-10 minutes
+Destroy all resources:
 
-Resources Deleted:
-• DynamoDB table (all log data)
-• Lambda functions
-• API Gateway
-• KMS key (scheduled for deletion in 30 days)
-• IAM roles and policies
-• CloudWatch log groups (all logs)
-• CloudWatch alarms
-• SNS topic
-• AWS Config rules
+Type yes when prompted. Destruction takes 5-10 minutes.
 
 Selective Cleanup
 
-Remove Specific Resource:
+Remove Lambda function only:
+
+Remove DynamoDB table only:
 
 Cleanup Test Data
 
-Delete Test Logs from DynamoDB:
+Scan for test logs:
 
 Security Checklist
 
 Pre-Deployment:
-• [ ] AWS credentials configured with temporary credentials (not root)
+• [ ] AWS credentials configured (not root account)
 • [ ] IAM user has minimum required permissions
 • [ ] MFA enabled for AWS account
 • [ ] Git repository is private (if sensitive data)
@@ -363,9 +304,9 @@ Post-Deployment:
 • [ ] CloudWatch logs encrypted
 • [ ] SNS topic encrypted
 • [ ] API Gateway using AWS_IAM authorization
-• [ ] IAM roles follow least privilege principle
-• [ ] External IDs configured for role assumption
-• [ ] AWS Config enabled and rules active
+• [ ] IAM roles follow least privilege
+• [ ] External IDs configured
+• [ ] AWS Config enabled
 • [ ] CloudTrail enabled (recommended)
 • [ ] SNS subscription confirmed
 • [ ] CloudWatch alarms configured
@@ -375,9 +316,9 @@ Ongoing:
 • [ ] Review IAM policies monthly
 • [ ] Rotate external IDs quarterly
 • [ ] Review CloudWatch alarms weekly
-• [ ] Check AWS Config compliance dashboard weekly
+• [ ] Check AWS Config compliance weekly
 • [ ] Review CloudTrail logs for anomalies
-• [ ] Test disaster recovery procedures quarterly
+• [ ] Test disaster recovery quarterly
 • [ ] Update documentation as needed
 
 Cost Management
@@ -386,7 +327,7 @@ View Current Costs
 
 Set Budget Alerts
 
-Create Budget:
+Create budget:
 
 budget.json:
 
@@ -394,35 +335,30 @@ notifications.json:
 
 Next Steps
 
-After Successful Deployment:
-Run Load Tests
-Configure Monitoring Dashboard
-• Access CloudWatch dashboard
-• Customize metrics and widgets
-• Set up additional alarms
-Enable Automated Backups
-• Configure DynamoDB on-demand backups
-• Set up S3 archival for old logs
-Document APIs
-• Create API documentation (Swagger/OpenAPI)
-• Share with development teams
-Set Up CI/CD
-• Configure GitHub Actions workflow
-• Automate testing and deployment
-Plan Disaster Recovery
-• Test point-in-time recovery
-• Document recovery procedures
-• Conduct DR drills
-Optimize Costs
-• Review usage patterns
-• Consider provisioned capacity for steady workloads
-• Implement S3 archival for old logs
+After successful deployment:
+Run load tests:
+Configure monitoring dashboard in CloudWatch
+Enable automated backups for DynamoDB
+Document APIs (Swagger/OpenAPI)
+Set up CI/CD with GitHub Actions
+Plan disaster recovery procedures
+Optimize costs based on usage patterns
 
 Support
 
 For Issues:
-Check Troubleshooting section
+Check Troubleshooting section above
 Review CloudWatch logs for errors
 Verify Terraform state: terraform show
 Check AWS service quotas
-Open GitHub issue: https://github.com/pmguzumbi/
+Open GitHub issue: https://github.com/pmguzumbi/simple-log-service/issues
+
+Additional Resources
+• AWS Lambda Documentation
+• DynamoDB Best Practices
+• API Gateway Documentation
+• Terraform AWS Provider
+
+Document Owner: Infrastructure Team  
+Review Cycle: Quarterly  
+Next Review: 2026-05-02
