@@ -99,8 +99,7 @@ def test_ingest_log():
 
 def test_read_recent():
     """Test log retrieval endpoint"""
-    print("
-=== Testing Log Retrieval ===")
+    print("=== Testing Log Retrieval ===")
     
     endpoint = get_api_endpoint()
     url = f"{endpoint}/logs/recent"
@@ -115,8 +114,7 @@ def test_read_recent():
     success_count = 0
     
     for test_case in test_cases:
-        print(f"
-Test: {test_case['description']}")
+        print(f"Test: {test_case['description']}")
         
         headers = sign_request("GET", url, params=test_case["params"])
         
@@ -147,16 +145,14 @@ def run_integration_test():
     ingest_success = test_ingest_log()
     
     # Wait for data to be available
-    print("
-Waiting 2 seconds for data propagation...")
+    print("Waiting 2 seconds for data propagation...")
     time.sleep(2)
     
     # Test retrieval
     read_success = test_read_recent()
     
     # Summary
-    print("
-" + "=" * 60)
+    print("" + "=" * 60)
     print("Test Summary")
     print("=" * 60)
     print(f"Log Ingestion: {'✓ PASSED' if ingest_success else '✗ FAILED'}")
