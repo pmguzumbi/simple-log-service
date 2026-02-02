@@ -1,227 +1,600 @@
-# Architecture Documentation
+
+# Simple Log Service - Architecture Documentation
+
+**Version:** 2.0  
+**Last Updated:** 2026-02-02  
+**Status:** Production
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [System Architecture](#system-architecture)
+3. [Component Details](#component-details)
+4. [Data Flow](#data-flow)
+5. [Security Architecture](#security-architecture)
+6. [Network Architecture](#network-architecture)
+7. [Scalability & Performance](#scalability--performance)
+8. [Disaster Recovery](#disaster-recovery)
+9. [Design Decisions](#design-decisions)
+
+---
 
 ## Overview
 
-Simple Log Service is a serverless log management system built on AWS, designed for high availability, scalability, and security.
+Simple Log Service is a serverless, event-driven logging platform built on AWS infrastructure. The architecture follows AWS Well-Architected Framework principles with emphasis on security, reliability, and operational excellence.
 
-## Architecture Diagram
+**Architecture Principles:**
+- **Serverless-First**: No server management, automatic scaling
+- **Security by Design**: Encryption, IAM, least privilege
+- **Infrastructure as Code**: 100% Terraform-managed
+- **Event-Driven**: Asynchronous processing
+- **Cost-Optimized**: Pay-per-use pricing model
+
+---
+
+## System Architecture
+
+### High-Level Architecture Diagram
 
 ```
-┌─────────────┐
-│   Client    │
-└──────┬──────┘
-       │ HTTPS (TLS 1.2+)
-       │ AWS SigV4 Auth
-       ▼
-┌─────────────────────┐
-│   API Gateway       │
-│   (Regional)        │
-└──────┬──────────────┘
-       │
-       ├─────────────────┐
-       │                 │
-       ▼                 ▼
-┌─────────────┐   ┌─────────────┐
-│  Lambda     │   │  Lambda     │
-│  Ingest     │   │  Read       │
-└──────┬──────┘   └──────┬──────┘
-       │                 │
-       └────────┬────────┘
-                ▼
-        ┌───────────────┐
-        │  DynamoDB     │
-        │  (Multi-AZ)   │
-        │  + GSI        │
-        └───────┬───────┘
-                │
-                ▼
-        ┌───────────────┐
-        │  KMS Key      │
-        │  (Encryption) │
-        └───────────────┘
-                │
-                ▼
-        ┌───────────────┐
-        │  CloudWatch   │
-        │  Logs/Metrics │
-        └───────┬───────┘
-                │
-                ▼
-        ┌───────────────┐
-        │  SNS Topic    │
-        │  (Alarms)     │
-        └───────────────┘
-                │
-                ▼
-        ┌───────────────┐
-        │  AWS Config   │
-        │  (Compliance) │
-        └───────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                         Client Layer                             │
+│  (Applications, Services, Monitoring Tools)                      │
+└────────────────────────┬────────────────────────────────────────┘
+                         │
+                         │ HTTPS + AWS SigV4
+                         │
+┌────────────────────────▼────────────────────────────────────────┐
+│                    API Gateway (REST)                            │
+│  - IAM Authorization                                             │
+│  - Request Validation                                            │
+│  - CloudWatch Logging                                            │
+│  - Throttling & Rate Limiting                                    │
+└────────────┬───────────────────────────┬────────────────────────┘
+             │                           │
+             │ POST /logs                │ GET /logs/recent
+             │                           │
+┌────────────▼──────────┐    ┌──────────▼─────────────┐
+│   Ingest Lambda       │    │   Read Recent Lambda   │
+│   - Validation        │    │   - Query DynamoDB     │
+│   - Enrichment        │    │   - Filter & Sort      │
+│   - Write to DynamoDB │    │   - Format Response    │
+└────────────┬──────────┘    └──────────┬─────────────┘
+             │                           │
+             │                           │
+             └───────────┬───────────────┘
+                         │
+                         │ KMS Encrypted
+                         │
+┌────────────────────────▼────────────────────────────────────────┐
+│                      DynamoDB Table                              │
+│  - Partition Key: service_name                                   │
+│  - Sort Key: timestamp                                           │
+│  - KMS Encryption                                                │
+│  - Point-in-Time Recovery                                        │
+│  - Deletion Protection                                           │
+└──────────────────────────────────────────────────────────────────┘
+                         │
+                         │
+┌────────────────────────▼────────────────────────────────────────┐
+│                    Monitoring Layer                              │
+│  - CloudWatch Metrics                                            │
+│  - CloudWatch Alarms                                             │
+│  - SNS Notifications                                             │
+│  - AWS Config Rules                                              │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-## Components
+---
+
+## Component Details
 
 ### 1. API Gateway
-- **Type**: REST API (Regional)
-- **Authentication**: AWS SigV4
-- **Endpoints**:
-  - `POST /logs` - Ingest logs
-  - `GET /logs/recent` - Retrieve recent logs
-- **Features**:
-  - Request throttling (5000 burst, 10000 steady)
-  - CloudWatch logging
-  - X-Ray tracing
-  - CORS enabled
+
+**Type:** REST API  
+**Region:** us-east-1  
+**Authorization:** AWS_IAM
+
+**Endpoints:**
+- `POST /logs` - Log ingestion endpoint
+- `GET /logs/recent` - Log retrieval endpoint
+
+**Features:**
+- Request/response validation
+- CloudWatch access logging (7-day retention)
+- Request throttling (10,000 requests/second)
+- CORS disabled (internal use only)
+- Stage: `prod`
+
+**Integration:**
+- Lambda proxy integration
+- Asynchronous invocation
+- Automatic retry on failure
+
+---
 
 ### 2. Lambda Functions
 
 #### Ingest Lambda
-- **Runtime**: Python 3.11
-- **Memory**: 256 MB
-- **Timeout**: 30 seconds
-- **Concurrency**: Unlimited
-- **Function**: Validates and writes logs to DynamoDB
 
-#### Read Lambda
-- **Runtime**: Python 3.11
-- **Memory**: 256 MB
-- **Timeout**: 30 seconds
-- **Concurrency**: Unlimited
-- **Function**: Queries DynamoDB for recent logs (24 hours)
+**Function Name:** `simple-log-service-ingest-prod`  
+**Runtime:** Python 3.12  
+**Memory:** 256 MB  
+**Timeout:** 30 seconds  
+**Concurrency:** 100 (reserved)
+
+**Responsibilities:**
+- Validate incoming log payload
+- Generate unique log ID (UUID v4)
+- Add timestamp if not provided
+- Enrich with metadata
+- Write to DynamoDB
+- Return success/error response
+
+**Environment Variables:**
+- `DYNAMODB_TABLE_NAME`: Target table name
+- `LOG_LEVEL`: INFO
+
+**IAM Permissions:**
+- `dynamodb:PutItem` on logs table
+- `kms:Decrypt` on KMS key
+- `logs:CreateLogGroup`, `logs:CreateLogStream`, `logs:PutLogEvents`
+
+---
+
+#### Read Recent Lambda
+
+**Function Name:** `simple-log-service-read-recent-prod`  
+**Runtime:** Python 3.12  
+**Memory:** 256 MB  
+**Timeout:** 30 seconds  
+**Concurrency:** 100 (reserved)
+
+**Responsibilities:**
+- Parse query parameters
+- Query/scan DynamoDB
+- Filter by service_name (if provided)
+- Sort by timestamp (descending)
+- Limit results (default: 100, max: 1000)
+- Format and return response
+
+**Environment Variables:**
+- `DYNAMODB_TABLE_NAME`: Target table name
+- `LOG_LEVEL`: INFO
+
+**IAM Permissions:**
+- `dynamodb:Query`, `dynamodb:Scan` on logs table
+- `kms:Decrypt` on KMS key
+- `logs:CreateLogGroup`, `logs:CreateLogStream`, `logs:PutLogEvents`
+
+---
 
 ### 3. DynamoDB Table
 
-#### Schema
-- **Table Name**: `simple-log-service-{env}-logs`
-- **Partition Key**: `service_name` (String)
-- **Sort Key**: `timestamp` (Number)
-- **Billing**: Provisioned (5 RCU/WCU base, auto-scaling to 100)
+**Table Name:** `simple-log-service-logs-prod`  
+**Billing Mode:** On-Demand (Pay-per-request)  
+**Region:** us-east-1
 
-#### Global Secondary Index
-- **Index Name**: `TimestampIndex`
-- **Partition Key**: `log_type` (String)
-- **Sort Key**: `timestamp` (Number)
-- **Projection**: ALL
+**Schema:**
+- **Partition Key:** `service_name` (String)
+- **Sort Key:** `timestamp` (String, ISO 8601 format)
 
-#### Features
-- Point-in-time recovery (35 days)
-- Deletion protection
-- KMS encryption at rest
-- Auto-scaling (70% utilization target)
+**Attributes:**
+- `log_id` (String) - UUID v4
+- `log_type` (String) - application, system, audit, etc.
+- `level` (String) - INFO, WARN, ERROR, DEBUG
+- `message` (String) - Log message content
+- `metadata` (Map) - Optional additional data
 
-### 4. Security
+**Features:**
+- KMS encryption with customer-managed key
+- Point-in-time recovery (35-day retention)
+- Deletion protection enabled
+- CloudWatch contributor insights enabled
+- Automatic scaling (on-demand)
 
-#### Encryption
-- **At Rest**: KMS customer-managed key
-- **In Transit**: TLS 1.2+
-- **Key Rotation**: Enabled (annual)
+**Access Patterns:**
+1. Query by service_name + timestamp range
+2. Scan all recent logs (last 24 hours)
+3. Query by service_name + level filter
 
-#### IAM
-- **Lambda Execution Role**: Least privilege
-- **API Gateway**: AWS SigV4 authentication
-- **Temporary Credentials**: Required
+---
 
-#### Compliance
-- AWS Config rules monitoring:
-  - DynamoDB encryption
-  - Lambda encryption
-  - CloudWatch log encryption
-  - S3 encryption and versioning
-- SNS notifications for violations
+### 4. KMS Encryption
 
-### 5. Monitoring
+**Key Alias:** `alias/simple-log-service-prod`  
+**Key Type:** Symmetric (AES-256)  
+**Key Rotation:** Enabled (annual)
 
-#### CloudWatch Metrics
-- Lambda invocations, errors, duration
-- DynamoDB capacity, throttles
-- API Gateway requests, errors
-- Custom business metrics
+**Usage:**
+- DynamoDB table encryption
+- CloudWatch log encryption
+- Lambda environment variable encryption
 
-#### Alarms
-- Lambda error rate > 5 in 5 minutes
-- Lambda duration > 5 seconds
-- DynamoDB throttles > 10 in 5 minutes
-- API 4xx errors > 50 in 5 minutes
-- API 5xx errors > 5 in 5 minutes
+**Key Policy:**
+- Root account full access
+- Lambda execution roles: Decrypt only
+- DynamoDB service: Encrypt/Decrypt
 
-#### Dashboard
-- Real-time metrics visualization
-- Performance trends
-- Error tracking
+---
 
-### 6. High Availability
+### 5. IAM Roles
 
-#### Multi-AZ Deployment
-- DynamoDB: Automatic multi-AZ replication
-- Lambda: Deployed across multiple AZs
-- API Gateway: Regional endpoint
+#### Ingest Role
 
-#### Disaster Recovery
-- RTO: < 1 hour
-- RPO: < 5 minutes
-- Point-in-time recovery enabled
-- Automated backups
+**Role Name:** `simple-log-service-ingest-prod`  
+**External ID:** `simple-log-service-ingest-prod`  
+**Trust Policy:** Allows assumption by authenticated principals
+
+**Permissions:**
+- `dynamodb:PutItem` on logs table
+- `execute-api:Invoke` on POST /logs endpoint
+- `kms:Decrypt` on KMS key
+
+---
+
+#### Read Role
+
+**Role Name:** `simple-log-service-read-prod`  
+**External ID:** `simple-log-service-read-prod`  
+**Trust Policy:** Allows assumption by authenticated principals
+
+**Permissions:**
+- `dynamodb:Query`, `dynamodb:Scan` on logs table
+- `execute-api:Invoke` on GET /logs/recent endpoint
+- `kms:Decrypt` on KMS key
+
+---
+
+#### Full Access Role
+
+**Role Name:** `simple-log-service-full-access-prod`  
+**External ID:** `simple-log-service-full-prod`  
+**Trust Policy:** Allows assumption by authenticated principals
+
+**Permissions:**
+- All DynamoDB operations on logs table
+- All API Gateway operations
+- KMS Encrypt/Decrypt
+
+---
+
+### 6. CloudWatch Monitoring
+
+**Log Groups:**
+- `/aws/lambda/simple-log-service-ingest-prod` (7-day retention)
+- `/aws/lambda/simple-log-service-read-recent-prod` (7-day retention)
+- `/aws/apigateway/simple-log-service-prod` (7-day retention)
+
+**Alarms:**
+- Lambda error rate > 5% (5-minute period)
+- DynamoDB throttled requests > 10 (1-minute period)
+- API Gateway 5xx errors > 10 (5-minute period)
+
+**Metrics:**
+- Lambda invocations, duration, errors
+- DynamoDB consumed capacity, throttles
+- API Gateway request count, latency, errors
+
+---
 
 ## Data Flow
 
-### Log Ingestion
-1. Client signs request with AWS SigV4
-2. API Gateway validates authentication
-3. API Gateway invokes Ingest Lambda
-4. Lambda validates log data
-5. Lambda writes to DynamoDB
-6. Lambda publishes CloudWatch metric
-7. Response returned to client
+### Ingest Flow (POST /logs)
 
-### Log Retrieval
-1. Client signs request with AWS SigV4
-2. API Gateway validates authentication
-3. API Gateway invokes Read Lambda
-4. Lambda queries DynamoDB (by service or type)
-5. Lambda filters logs (last 24 hours)
-6. Lambda publishes CloudWatch metric
-7. Logs returned to client
+```
+1. Client → API Gateway
+   - AWS SigV4 signed request
+   - JSON payload with log data
 
-## Scalability
+2. API Gateway → Ingest Lambda
+   - IAM authorization check
+   - Request validation
+   - Lambda proxy integration
+
+3. Ingest Lambda Processing
+   - Validate required fields
+   - Generate log_id (UUID v4)
+   - Add/validate timestamp
+   - Enrich with metadata
+
+4. Ingest Lambda → DynamoDB
+   - PutItem operation
+   - KMS encryption
+   - Conditional write (idempotency)
+
+5. DynamoDB → Ingest Lambda
+   - Success/failure response
+   - Consumed capacity units
+
+6. Ingest Lambda → API Gateway
+   - HTTP 201 (success) or 400/500 (error)
+   - Response body with log_id
+
+7. API Gateway → Client
+   - Final response
+   - CloudWatch logging
+```
+
+---
+
+### Read Flow (GET /logs/recent)
+
+```
+1. Client → API Gateway
+   - AWS SigV4 signed request
+   - Query parameters (service_name, limit)
+
+2. API Gateway → Read Lambda
+   - IAM authorization check
+   - Query parameter validation
+   - Lambda proxy integration
+
+3. Read Lambda Processing
+   - Parse query parameters
+   - Build DynamoDB query/scan
+   - Apply filters and limits
+
+4. Read Lambda → DynamoDB
+   - Query (if service_name provided)
+   - Scan (if no service_name)
+   - KMS decryption
+
+5. DynamoDB → Read Lambda
+   - Log items
+   - Consumed capacity units
+
+6. Read Lambda Processing
+   - Sort by timestamp (descending)
+   - Format response
+   - Apply limit
+
+7. Read Lambda → API Gateway
+   - HTTP 200 (success) or 400/500 (error)
+   - Response body with logs array
+
+8. API Gateway → Client
+   - Final response
+   - CloudWatch logging
+```
+
+---
+
+## Security Architecture
+
+### Defense in Depth
+
+**Layer 1: Network**
+- HTTPS only (TLS 1.2+)
+- No public endpoints (API Gateway regional)
+- VPC endpoints (optional for enhanced security)
+
+**Layer 2: Authentication**
+- AWS SigV4 request signing
+- IAM role assumption with external IDs
+- Temporary credentials (15-minute sessions)
+
+**Layer 3: Authorization**
+- IAM policies (least privilege)
+- Resource-based policies
+- API Gateway IAM authorizer
+
+**Layer 4: Encryption**
+- In-transit: TLS 1.2+
+- At-rest: KMS customer-managed keys
+- Key rotation: Annual
+
+**Layer 5: Monitoring**
+- CloudWatch logs (encrypted)
+- CloudTrail audit logs
+- AWS Config compliance checks
+- SNS notifications for violations
+
+---
+
+### Threat Model
+
+**Threats Mitigated:**
+- ✅ Unauthorized access (IAM + external IDs)
+- ✅ Data interception (TLS encryption)
+- ✅ Data tampering (request signing)
+- ✅ Data exposure (KMS encryption)
+- ✅ Privilege escalation (least privilege policies)
+- ✅ Denial of service (throttling + rate limiting)
+
+**Residual Risks:**
+- ⚠️ Compromised AWS credentials (mitigated by MFA + rotation)
+- ⚠️ Insider threats (mitigated by CloudTrail + monitoring)
+- ⚠️ DDoS attacks (mitigated by AWS Shield + throttling)
+
+---
+
+## Network Architecture
+
+### Regional Deployment
+
+**Primary Region:** us-east-1 (N. Virginia)
+
+**Availability:**
+- Multi-AZ by default (DynamoDB, Lambda)
+- Regional API Gateway endpoint
+- Cross-AZ replication (DynamoDB)
+
+**Connectivity:**
+- Public internet (HTTPS)
+- Optional: VPC endpoints for private connectivity
+- Optional: AWS PrivateLink for on-premises access
+
+---
+
+## Scalability & Performance
 
 ### Horizontal Scaling
-- Lambda: Automatic (up to account limits)
-- DynamoDB: Auto-scaling (5-100 capacity units)
-- API Gateway: Automatic
 
-### Performance Targets
-- Ingestion: < 200ms p99
-- Retrieval: < 300ms p99
-- Throughput: > 1000 req/sec
+**API Gateway:**
+- Automatic scaling (10,000 requests/second default)
+- Burst capacity: 5,000 requests
+- Regional endpoint (low latency)
 
-## Cost Optimization
+**Lambda:**
+- Concurrent executions: 100 (reserved)
+- Automatic scaling up to account limit (1,000)
+- Cold start: ~200ms (Python 3.12)
+- Warm execution: ~10-50ms
 
-### Strategies
-- Provisioned capacity with auto-scaling
-- CloudWatch log retention (7 days)
-- Lambda memory optimization (256 MB)
-- Efficient DynamoDB queries (GSI usage)
+**DynamoDB:**
+- On-demand capacity mode (automatic scaling)
+- Unlimited throughput (within account limits)
+- Adaptive capacity for hot partitions
+- Global secondary indexes (optional for future)
 
-### Estimated Monthly Cost
-- **Development**: $15-25
-- **Production**: $50-150 (moderate load)
+---
 
-See COST_ESTIMATION.md for detailed breakdown.
+### Performance Characteristics
 
-## Security Best Practices
+**Latency:**
+- API Gateway: ~10-20ms
+- Lambda (warm): ~10-50ms
+- DynamoDB: ~5-10ms (single-digit millisecond)
+- **Total (P50):** ~50-100ms
+- **Total (P99):** ~200-500ms
 
-1. **Authentication**: AWS SigV4 only
-2. **Encryption**: KMS for all data
-3. **Least Privilege**: IAM roles
-4. **Monitoring**: CloudWatch + Config
-5. **Compliance**: Automated checks
-6. **Audit**: CloudTrail enabled
-7. **Network**: Regional endpoints only
+**Throughput:**
+- Ingest: 1,000+ logs/second
+- Read: 500+ queries/second
+- Burst: 5,000 requests/second
+
+---
+
+## Disaster Recovery
+
+### Backup Strategy
+
+**DynamoDB:**
+- Point-in-time recovery (35 days)
+- Continuous backups
+- On-demand backups (manual)
+- Cross-region replication (optional)
+
+**Lambda:**
+- Code stored in S3 (versioned)
+- Terraform state backup (S3 + versioning)
+- Infrastructure as Code (recreate anytime)
+
+**Configuration:**
+- Terraform state in S3 (versioned)
+- Git repository (version control)
+- Automated backups (GitHub)
+
+---
+
+### Recovery Objectives
+
+**RTO (Recovery Time Objective):** 1 hour
+- Redeploy infrastructure via Terraform
+- Restore DynamoDB from point-in-time recovery
+
+**RPO (Recovery Point Objective):** 5 minutes
+- DynamoDB continuous backups
+- Minimal data loss
+
+---
+
+## Design Decisions
+
+### Why Serverless?
+
+**Advantages:**
+- ✅ No server management
+- ✅ Automatic scaling
+- ✅ Pay-per-use pricing
+- ✅ High availability (multi-AZ)
+- ✅ Built-in monitoring
+
+**Trade-offs:**
+- ⚠️ Cold start latency (~200ms)
+- ⚠️ Vendor lock-in (AWS-specific)
+- ⚠️ Limited execution time (15 minutes max)
+
+---
+
+### Why DynamoDB?
+
+**Advantages:**
+- ✅ Single-digit millisecond latency
+- ✅ Automatic scaling (on-demand)
+- ✅ Built-in encryption
+- ✅ Point-in-time recovery
+- ✅ No server management
+
+**Trade-offs:**
+- ⚠️ Limited query patterns (partition + sort key)
+- ⚠️ No complex joins or aggregations
+- ⚠️ Cost increases with throughput
+
+See `DATABASE_DESIGN.md` for detailed justification.
+
+---
+
+### Why API Gateway?
+
+**Advantages:**
+- ✅ Built-in IAM authorization
+- ✅ Request/response validation
+- ✅ Throttling and rate limiting
+- ✅ CloudWatch integration
+- ✅ Automatic HTTPS
+
+**Trade-offs:**
+- ⚠️ Additional latency (~10-20ms)
+- ⚠️ Cost per request ($3.50/million)
+- ⚠️ Limited to REST/HTTP protocols
+
+---
+
+### Why KMS Customer-Managed Keys?
+
+**Advantages:**
+- ✅ Full control over key lifecycle
+- ✅ Audit trail (CloudTrail)
+- ✅ Key rotation policy
+- ✅ Compliance requirements
+
+**Trade-offs:**
+- ⚠️ Additional cost ($1/month + $0.03/10K requests)
+- ⚠️ Complexity (key management)
+
+---
 
 ## Future Enhancements
 
-1. **Log Retention**: TTL-based expiration
-2. **Search**: OpenSearch integration
-3. **Analytics**: Athena queries
-4. **Streaming**: Kinesis integration
-5. **Multi-Region**: Cross-region replication
+**Planned:**
+- [ ] Global secondary indexes for advanced queries
+- [ ] DynamoDB Streams for real-time processing
+- [ ] Lambda@Edge for global distribution
+- [ ] Cross-region replication for disaster recovery
+- [ ] API Gateway caching for read-heavy workloads
+
+**Under Consideration:**
+- [ ] GraphQL API (AppSync)
+- [ ] WebSocket support for real-time logs
+- [ ] S3 archival for long-term storage
+- [ ] Athena integration for analytics
+- [ ] QuickSight dashboards for visualization
+
+---
+
+## References
+
+- [AWS Well-Architected Framework](https://aws.amazon.com/architecture/well-architected/)
+- [DynamoDB Best Practices](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/best-practices.html)
+- [Lambda Best Practices](https://docs.aws.amazon.com/lambda/latest/dg/best-practices.html)
+- [API Gateway Best Practices](https://docs.aws.amazon.com/apigateway/latest/developerguide/best-practices.html)
+
+---
+
+**Document Owner:** Infrastructure Team  
+**Review Cycle:** Quarterly  
+**Next Review:** 2026-05-02
