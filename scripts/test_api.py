@@ -2,12 +2,13 @@
 """
 API Testing Script for Simple Log Service
 Tests both log ingestion and retrieval endpoints
-Compatible with Windows PowerShell
+Compatible with Windows PowerShell and pytest
 """
 
 import json
 import sys
 import time
+import os
 from datetime import datetime
 import boto3
 from botocore.auth import SigV4Auth
@@ -15,34 +16,17 @@ from botocore.awsrequest import AWSRequest
 import requests
 
 # Configuration
-API_ENDPOINT = ""  # Set this from Terraform output or pass as argument
-REGION = "eu-west-2"
+REGION = "us-east-1"  # Updated to match your deployment region
 
 def get_api_endpoint():
-    """Get API endpoint from Terraform output or environment"""
-    global API_ENDPOINT
+    """Get API endpoint from environment variable or use default"""
+    # Try environment variable first
+    endpoint = os.environ.get('API_ENDPOINT')
+    if endpoint:
+        return endpoint
     
-    if API_ENDPOINT:
-        return API_ENDPOINT
-    
-    # Try to get from Terraform output
-    try:
-        import subprocess
-        result = subprocess.run(
-            ["terraform", "output", "-raw", "api_gateway_url"],
-            cwd="../terraform",
-            capture_output=True,
-            text=True
-        )
-        if result.returncode == 0:
-            API_ENDPOINT = result.stdout.strip()
-            return API_ENDPOINT
-    except Exception as e:
-        print(f"Could not get API endpoint from Terraform: {e}")
-    
-    # Prompt user
-    API_ENDPOINT = input("Enter API Gateway endpoint URL: ").strip()
-    return API_ENDPOINT
+    # Use your known API Gateway endpoint as default
+    return "https://v22n8t8394.execute-api.us-east-1.amazonaws.com/prod"
 
 def sign_request(method, url, body=None, params=None):
     """Sign request with AWS SigV4"""
@@ -145,26 +129,29 @@ def run_integration_test():
     ingest_success = test_ingest_log()
     
     # Wait for data to be available
-    print("Waiting 2 seconds for data propagation...")
+    print("
+Waiting 2 seconds for data propagation...")
     time.sleep(2)
     
     # Test retrieval
     read_success = test_read_recent()
     
     # Summary
-    print("" + "=" * 60)
+    print("
+" + "=" * 60)
     print("Test Summary")
     print("=" * 60)
     print(f"Log Ingestion: {'✓ PASSED' if ingest_success else '✗ FAILED'}")
     print(f"Log Retrieval: {'✓ PASSED' if read_success else '✗ FAILED'}")
     
     if ingest_success and read_success:
-        print("✓ All tests passed!")
+        print("
+✓ All tests passed!")
         return 0
     else:
-        print("✗ Some tests failed")
+        print("
+✗ Some tests failed")
         return 1
 
 if __name__ == "__main__":
     sys.exit(run_integration_test())
-
