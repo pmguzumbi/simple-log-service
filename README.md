@@ -1,270 +1,343 @@
-# Simple Log Service
+Simple Log Service
 
-A serverless log ingestion and retrieval system built on AWS using Lambda, DynamoDB, API Gateway, and CloudWatch with comprehensive compliance monitoring via AWS Config.
+A secure, serverless logging service built on AWS infrastructure using Lambda, DynamoDB, and API Gateway with IAM authentication.
 
-## Architecture Overview
+📋 Table of Contents
+• Overview
+• Architecture
+• Features
+• Prerequisites
+• Quick Start
+• Project Structure
+• Deployment
+• Testing
+• API Documentation
+• Security
+• Monitoring
+• Cost Estimation
+• Troubleshooting
+• Documentation
+• Contributing
 
-This system provides a scalable, secure log management solution with the following components:
+Overview
 
-- **API Gateway**: RESTful endpoints for log ingestion and retrieval
-- **Lambda Functions**: Serverless compute for log processing
-- **DynamoDB**: NoSQL database for log storage with GSI for efficient queries
-- **CloudWatch**: Monitoring, logging, and alerting
-- **KMS**: Customer-managed encryption keys for data at rest
-- **AWS Config**: Compliance monitoring and configuration tracking
-- **Multi-AZ Deployment**: High availability across eu-west-2a and eu-west-2b
+Simple Log Service is a production-ready, Infrastructure as Code (IaC) solution for centralized log management. Built entirely with Terraform, it provides secure log ingestion and retrieval capabilities with enterprise-grade security features.
 
-## Features
+Key Capabilities:
+• ✅ Serverless architecture (AWS Lambda + DynamoDB)
+• ✅ IAM-authenticated API Gateway endpoints
+• ✅ KMS encryption at rest and in transit
+• ✅ Point-in-time recovery and deletion protection
+• ✅ CloudWatch monitoring and alerting
+• ✅ Comprehensive testing suite
+• ✅ GitHub Actions CI/CD pipeline
 
-- ✅ Secure log ingestion with AWS SigV4 authentication
-- ✅ Recent log retrieval (last 24 hours)
-- ✅ Encryption at rest (KMS) and in transit (TLS)
-- ✅ Point-in-time recovery and deletion protection
-- ✅ CloudWatch monitoring with custom metrics
-- ✅ AWS Config compliance monitoring
-- ✅ SNS notifications for compliance violations
-- ✅ Auto-scaling and multi-AZ failover
-- ✅ Infrastructure as Code (Terraform)
-- ✅ CI/CD pipeline (GitHub Actions)
-- ✅ Comprehensive testing suite
-- ✅ Windows PowerShell compatible
+Architecture
 
-## Prerequisites
+High-Level Architecture
 
-- AWS Account with appropriate permissions
-- Terraform >= 1.5.0
-- Python 3.11
-- AWS CLI configured
-- Git
-- VS Code (recommended)
+Components
 
-## Quick Start
+API Gateway
+• REST API with IAM authorization
+• Two endpoints: POST /logs (ingest), GET /logs/recent (read)
+• CloudWatch logging enabled
 
-### 1. Clone Repository
-```bash
-git clone https://github.com/yourusername/simple-log-service.git
-cd simple-log-service
-```
+Lambda Functions
+• Ingest Lambda: Validates and stores log entries
+• Read Recent Lambda: Retrieves logs with filtering
 
-### 2. Configure AWS Credentials
-```bash
-aws configure
-```
+DynamoDB Table
+• Table: simple-log-service-logs-prod
+• Partition Key: service_name (String)
+• Sort Key: timestamp (String)
+• KMS encryption with customer-managed key
+• Point-in-time recovery enabled
+• Deletion protection enabled
 
-### 3. Deploy Infrastructure
-```bash
-cd terraform
-terraform init
-terraform plan
-terraform apply
-```
+IAM Roles
+• Ingest Role: Write-only access to DynamoDB
+• Read Role: Read-only access to DynamoDB
+• Full Access Role: Complete access for administration
 
-### 4. Test the Service
-```bash
-# Get API endpoint from Terraform output
-export API_ENDPOINT=$(terraform output -raw api_gateway_url)
+Features
 
-# Run tests (PowerShell compatible)
-cd ../scripts
-python test_api.py
-```
+Security
+• 🔒 KMS customer-managed encryption keys
+• 🔒 IAM authentication with external IDs
+• 🔒 Encryption in transit (TLS 1.2+)
+• 🔒 Least privilege IAM policies
+• 🔒 CloudWatch log encryption
 
-## Project Structure
+Reliability
+• ⚡ Point-in-time recovery (35 days)
+• ⚡ Deletion protection
+• ⚡ Automated backups
+• ⚡ Multi-AZ deployment
 
-```
-simple-log-service/
-├── README.md
-├── CHANGELOG.md
-├── .gitignore
-├── lambda/
-│   ├── ingest_log/
-│   │   ├── index.py
-│   │   ├── requirements.txt
-│   │   └── tests/
-│   │       └── test_ingest.py
-│   └── read_recent/
-│       ├── index.py
-│       ├── requirements.txt
-│       └── tests/
-│           └── test_read.py
-├── terraform/
-│   ├── main.tf
-│   ├── variables.tf
-│   ├── outputs.tf
-│   ├── dynamodb.tf
-│   ├── lambda.tf
-│   ├── api_gateway.tf
-│   ├── monitoring.tf
-│   ├── kms.tf
-│   ├── iam.tf
-│   └── config.tf
-├── scripts/
-│   ├── test_api.py
-│   ├── load_test.py
-│   └── deploy.sh
-├── docs/
-│   ├── ARCHITECTURE.md
-│   ├── DATABASE_DESIGN.md
-│   ├── DEPLOYMENT.md
-│   ├── COST_ESTIMATION.md
-│   ├── PERFORMANCE.md
-│   ├── DISASTER_RECOVERY.md
-│   └── COMPLIANCE.md
-└── .github/
-    └── workflows/
-        └── terraform.yml
-```
+Observability
+• 📊 CloudWatch metrics and alarms
+• 📊 Lambda execution logs
+• 📊 API Gateway access logs
+• 📊 DynamoDB performance metrics
 
-## Database Design
+Compliance
+• ✓ AWS Config monitoring
+• ✓ Encryption compliance checks
+• ✓ SNS notifications for violations
 
-### DynamoDB Table: LogsTable
+Prerequisites
 
-**Primary Key:**
-- Partition Key: `service_name` (String)
-- Sort Key: `timestamp` (Number)
+Required Tools
+• Terraform: v1.0+ (Install)
+• AWS CLI: v2.0+ (Install)
+• Python: 3.12+ (for testing)
+• PowerShell: 5.1+ (Windows)
+• Git: For version control
 
-**Global Secondary Index: TimestampIndex**
-- Partition Key: `log_type` (String)
-- Sort Key: `timestamp` (Number)
+AWS Account Setup
+• AWS Account with appropriate permissions
+• AWS CLI configured with credentials
+• S3 bucket for Terraform state (optional)
+• DynamoDB table for state locking (optional)
 
-**Attributes:**
-- `log_id` (String): Unique identifier
-- `message` (String): Log message content
-- `level` (String): Log level (INFO, WARN, ERROR)
-- `metadata` (Map): Additional context
+Python Dependencies (Testing)
 
-See [DATABASE_DESIGN.md](docs/DATABASE_DESIGN.md) for details.
+Quick Start
+Clone Repository
+Configure AWS Credentials
+Deploy Infrastructure
+Test Deployment
 
-## API Endpoints
+Project Structure
 
-### POST /logs
-Ingest a new log entry
+Deployment
 
-**Request Body:**
-```json
-{
-  "service_name": "api-service",
-  "log_type": "application",
-  "level": "INFO",
-  "message": "User login successful",
-  "metadata": {
-    "user_id": "12345",
-    "ip": "[IP_ADDRESS]"
-  }
-}
-```
+Standard Deployment
+Initialize Terraform
+Review Plan
+Apply Configuration
+Retrieve Outputs
 
-### GET /logs/recent
-Retrieve logs from the last 24 hours
+Environment-Specific Deployment
 
-**Query Parameters:**
-- `service_name` (optional): Filter by service
-- `log_type` (optional): Filter by type
-- `limit` (optional): Max results (default: 100)
+Production:
 
-## Compliance Monitoring
+Development:
 
-AWS Config continuously monitors:
-- DynamoDB encryption at rest
-- DynamoDB point-in-time recovery
-- Lambda function encryption
-- CloudWatch log encryption
-- S3 bucket encryption and versioning
+Terraform Backend Configuration
 
-SNS notifications are sent for any compliance violations.
+For team collaboration, configure S3 backend in terraform/main.tf:
 
-See [COMPLIANCE.md](docs/COMPLIANCE.md) for details.
+Testing
 
-## Monitoring
+Test Scripts Overview
 
-CloudWatch dashboards and alarms are automatically created:
+| Script | Purpose | Target |
+|--------|---------|--------|
+| complete-test-script.ps1 | Lambda function validation | Backend |
+| api-gateway-test.ps1 | API Gateway endpoint testing | API |
+| test_api.py | Python-based API tests | API |
+| load_test.py | Performance and load testing | System |
 
-- Lambda error rates and duration
-- DynamoDB throttling and capacity
-- API Gateway 4xx/5xx errors
-- Custom business metrics
-- AWS Config compliance status
+Running Tests
 
-## Security
+Complete Lambda Test:
 
-- All data encrypted at rest using KMS customer-managed keys
-- All data encrypted in transit using TLS 1.2+
-- API authentication via AWS SigV4
-- IAM roles with least privilege
-- Temporary credentials only
-- CloudWatch logs encrypted
-- AWS Config compliance monitoring
+API Gateway Test:
 
-## Cost Estimation
+Python API Test:
 
-Estimated monthly cost: **$20-60** for moderate usage (including AWS Config)
+Load Test:
 
-See [COST_ESTIMATION.md](docs/COST_ESTIMATION.md) for breakdown.
+Test Prerequisites
 
-## Performance
+Environment Variables:
 
-- Log ingestion: ~50ms p50, ~200ms p99
-- Log retrieval: ~100ms p50, ~300ms p99
-- Throughput: 1000+ requests/second
+External IDs:
+• Ingest: simple-log-service-ingest-prod
+• Read: simple-log-service-read-prod
 
-See [PERFORMANCE.md](docs/PERFORMANCE.md) for details.
+API Documentation
 
-## Disaster Recovery
+Base URL
 
-- Multi-AZ deployment for high availability
-- Point-in-time recovery enabled (35 days)
-- Automated backups
-- AWS Config configuration snapshots
+Authentication
+All endpoints require AWS SigV4 authentication with IAM credentials.
 
-See [DISASTER_RECOVERY.md](docs/DISASTER_RECOVERY.md) for runbooks.
+Endpoints
 
-## CI/CD Pipeline
+POST /logs (Ingest)
 
-GitHub Actions workflow automatically:
-- Validates Terraform syntax
-- Runs unit tests
-- Plans infrastructure changes
-- Deploys on merge to main
+Description: Ingest a new log entry
 
-## Testing
+Request Body:
 
-### Local Testing (VS Code)
-```bash
-# Install dependencies
-pip install -r lambda/ingest_log/requirements.txt
-pip install pytest moto boto3
+Response (201 Created):
 
-# Run unit tests
-pytest lambda/ingest_log/tests/
-pytest lambda/read_recent/tests/
-```
+Required IAM Role: simple-log-service-ingest-prod
 
-### Integration Testing
-```bash
-# Deploy to AWS
-cd terraform
-terraform apply
+GET /logs/recent (Read)
 
-# Run API tests
-cd ../scripts
-python test_api.py
+Description: Retrieve recent log entries
 
-# Run load tests
-python load_test.py
-```
+Query Parameters:
+• service_name (optional): Filter by service
+• limit (optional): Max results (default: 100)
 
-## Contributing
+Response (200 OK):
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests
-5. Submit a pull request
+Required IAM Role: simple-log-service-read-prod
 
-## License
+Security
 
-MIT License
+Encryption
 
-## Support
+At Rest:
+• DynamoDB encrypted with KMS customer-managed key
+• CloudWatch logs encrypted
+• Lambda environment variables encrypted
 
-For issues and questions, please open a GitHub issue.
+In Transit:
+• TLS 1.2+ for all API calls
+• AWS SigV4 request signing
+
+IAM Roles
+
+Ingest Role:
+• dynamodb:PutItem on logs table
+• External ID: simple-log-service-ingest-prod
+
+Read Role:
+• dynamodb:Scan, dynamodb:Query on logs table
+• External ID: simple-log-service-read-prod
+
+Full Access Role:
+• Complete DynamoDB access
+• Administrative operations
+
+Best Practices
+
+✅ Use temporary credentials via role assumption
+✅ Rotate external IDs regularly
+✅ Enable CloudTrail for audit logging
+✅ Review IAM policies quarterly
+✅ Enable MFA for administrative access
+
+Monitoring
+
+CloudWatch Alarms
+
+Lambda Errors:
+• Threshold: > 5 errors in 5 minutes
+• Action: SNS notification
+
+DynamoDB Throttling:
+• Threshold: > 10 throttled requests
+• Action: SNS notification
+
+API Gateway 5xx Errors:
+• Threshold: > 10 errors in 5 minutes
+• Action: SNS notification
+
+Metrics Dashboard
+
+Access CloudWatch dashboard: simple-log-service-prod-dashboard
+
+Key Metrics:
+• Lambda invocations and duration
+• DynamoDB read/write capacity
+• API Gateway request count and latency
+• Error rates and throttling
+
+Cost Estimation
+
+Monthly Cost Breakdown (Estimated)
+
+| Service | Usage | Cost |
+|---------|-------|------|
+| Lambda | 1M invocations | $0.20 |
+| DynamoDB | 1GB storage, 1M reads/writes | $1.50 |
+| API Gateway | 1M requests | $3.50 |
+| KMS | 1 key, 10K requests | $1.10 |
+| CloudWatch | Logs + metrics | $2.00 |
+| Total | | ~$8.30/month |
+
+Note: Costs vary based on actual usage. See docs/COST_ESTIMATION.md for detailed analysis.
+
+Troubleshooting
+
+Common Issues
+
+Issue: "Terraform state file not found"
+
+Issue: "Failed to assume role"
+• Verify external IDs match IAM trust policies
+• Check sts:AssumeRole permission
+• Confirm role ARNs are correct
+
+Issue: "403 Forbidden" API errors
+• Verify IAM role has execute-api:Invoke permission
+• Check API Gateway authorization is AWS_IAM
+• Confirm AWS SigV4 signing is correct
+
+Issue: "No logs retrieved"
+• Wait for DynamoDB eventual consistency (3-5 seconds)
+• Check CloudWatch logs for Lambda errors
+• Verify DynamoDB table has items
+
+Debug Commands
+
+Documentation
+
+Comprehensive documentation available in docs/:
+• ARCHITECTURE.md - Detailed system architecture
+• DATABASEDESIGN.md - DynamoDB schema and design decisions
+• DEPLOYMENT.md - Step-by-step deployment guide
+• COMPLIANCE.md - Security and compliance standards
+• COSTESTIMATION.md - Cost analysis and optimization
+• Testing instructions.md - Complete testing guide
+
+Contributing
+
+Development Workflow
+Fork the repository
+Create a feature branch (git checkout -b feature/amazing-feature)
+Make changes and test locally
+Commit changes (git commit -m 'Add amazing feature')
+Push to branch (git push origin feature/amazing-feature)
+Open a Pull Request
+
+Code Standards
+• Follow Terraform best practices
+• Include inline comments for complex logic
+• Update documentation for new features
+• Add tests for new functionality
+• Use descriptive commit messages
+
+Repository Information
+• Repository: https://github.com/pmguzumbi/simple-log-service
+• AWS Account: 033667696152
+• Primary Region: us-east-1
+• Environment: Production (prod)
+
+License
+
+This project is licensed under the MIT License - see LICENSE file for details.
+
+Support
+
+For issues, questions, or contributions:
+Check Troubleshooting section
+Review documentation in docs/
+Open an issue on GitHub
+Contact repository maintainers
+
+Version History
+• v1.0.0 (2026-02-02) - Initial production release
+• Complete Terraform infrastructure
+• Lambda functions with IAM authentication
+• Comprehensive testing suite
+• Full documentation
+
+Built with ❤️ using AWS, Terraform, and Infrastructure as Code principles
