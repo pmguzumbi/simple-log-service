@@ -1,5 +1,3 @@
-
-
 # iam.tf - IAM roles and policies for Simple Log Service
 # This file defines IAM roles with proper trust relationships and API Gateway permissions
 
