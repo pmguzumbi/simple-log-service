@@ -4,9 +4,8 @@ Version: 2.0
 Last Updated: 2026-02-02
 Status: Production
 
-================================================================================
 TABLE OF CONTENTS
-================================================================================
+
 Prerequisites
 Initial Setup
 Deployment Steps
@@ -20,9 +19,8 @@ Troubleshooting
 Cleanup
 Security Checklist
 
-================================================================================
 PREREQUISITES
-================================================================================
+
 
 REQUIRED SOFTWARE
 
@@ -124,9 +122,7 @@ Create an IAM policy with the following permissions:
   ]
 }
 
-================================================================================
 INITIAL SETUP
-================================================================================
 
 STEP 1: CLONE REPOSITORY
 
@@ -183,9 +179,7 @@ variable "enabledeletionprotection" {
   default     = true
 }
 
-================================================================================
 DEPLOYMENT STEPS
-================================================================================
 
 STEP 1: INITIALIZE TERRAFORM
 
@@ -266,9 +260,8 @@ Save outputs to file:
 
 terraform output -json > outputs.json
 
-================================================================================
 POST-DEPLOYMENT CONFIGURATION
-================================================================================
+
 CONFIRM SNS SUBSCRIPTION
 
 Check your email for AWS SNS subscription confirmation:
@@ -329,9 +322,7 @@ Expected output:
     "PITR": "ENABLED"
 }
 
-================================================================================
 TESTING DEPLOYMENT
-================================================================================
 
 TEST 1: COMPLETE LAMBDA TEST
 
@@ -342,9 +333,9 @@ cd C:\simple-log-service\scripts
 
 Expected output:
 
-========================================
+
 Simple Log Service - Basic Test
-========================================
+
 Start Time: 2026-02-02 13:30:15
 
 [STEP] Checking Prerequisites
@@ -359,9 +350,7 @@ Start Time: 2026-02-02 13:30:15
 [STEP] Testing Read Role (Read Access)
   [PASS] Read test successful (Retrieved 5 logs)
 
-========================================
 ALL TESTS PASSED
-========================================
 
 TEST 2: API GATEWAY TEST
 
@@ -372,9 +361,7 @@ cd C:\simple-log-service\scripts
 
 Expected output:
 
-========================================
 Simple Log Service - API Gateway Test
-========================================
 
 [STEP] Testing POST /logs (Ingest Endpoint)
   [PASS] POST request 1/3 successful
@@ -384,10 +371,8 @@ Simple Log Service - API Gateway Test
 [STEP] Testing GET /logs/recent (Read Endpoint)
   [PASS] GET /logs/recent successful
   [PASS] Retrieved 3 logs
-
-========================================
+  
 ALL API GATEWAY TESTS PASSED
-========================================
 
 TEST 3: PYTHON API TEST
 
@@ -406,9 +391,7 @@ testapi.py::testread_recent PASSED                                     [100%]
 
 ============================== 2 passed in 3.45s ==============================
 
-================================================================================
 ENVIRONMENT-SPECIFIC DEPLOYMENTS
-================================================================================
 
 DEVELOPMENT ENVIRONMENT
 
@@ -444,9 +427,7 @@ Deploy:
 
 terraform apply -var="environment=prod" -var="enabledeletionprotection=true" -var="logretentiondays=7"
 
-================================================================================
 UPDATING DEPLOYMENT
-================================================================================
 
 UPDATE LAMBDA FUNCTIONS
 
@@ -471,9 +452,7 @@ UPDATE VARIABLES
 
 terraform apply -var="alarm_email=newops@example.com"
 
-================================================================================
 ROLLBACK PROCEDURES
-================================================================================
 
 ROLLBACK TO PREVIOUS GIT VERSION
 
@@ -510,9 +489,7 @@ Redeploy Lambda:
 cd terraform
 terraform apply -target=awslambdafunction.ingest_lambda
 
-================================================================================
 MONITORING DEPLOYMENT
-================================================================================
 
 VIEW LAMBDA LOGS
 
@@ -552,9 +529,7 @@ Check specific alarm:
 
 aws cloudwatch describe-alarms --alarm-names "simple-log-service-prod-lambda-errors"
 
-================================================================================
 TROUBLESHOOTING
-================================================================================
 
 ISSUE 1: TERRAFORM INIT FAILS
 
@@ -703,9 +678,7 @@ Reinitialize and apply:
 terraform init
 terraform apply
 
-================================================================================
 CLEANUP
-================================================================================
 
 REMOVE ALL RESOURCES
 
@@ -746,9 +719,7 @@ Scan for test logs:
 
 aws dynamodb scan --table-name simple-log-service-logs-prod --filter-expression "servicename = :svc" --expression-attribute-values '{":svc":{"S":"test-service"}}' --projection-expression "servicename, timestamp"
 
-================================================================================
 SECURITY CHECKLIST
-================================================================================
 
 PRE-DEPLOYMENT
 
@@ -784,9 +755,7 @@ ONGOING
   [ ] Test disaster recovery quarterly
   [ ] Update documentation as needed
 
-================================================================================
 COST MANAGEMENT
-================================================================================
 
 VIEW CURRENT COSTS
 
@@ -827,9 +796,7 @@ notifications.json:
   ]
 }
 
-================================================================================
 NEXT STEPS
-================================================================================
 
 After successful deployment:
 Run load tests:
@@ -858,9 +825,7 @@ Optimize costs
 • Consider provisioned capacity for steady workloads
 • Implement S3 archival for old logs
 
-================================================================================
 SUPPORT
-================================================================================
 
 For Issues:
 Check Troubleshooting section above
@@ -869,9 +834,7 @@ Verify Terraform state: terraform show
 Check AWS service quotas
 Open GitHub issue: https://github.com/pmguzumbi/simple-log-service/issues
 
-================================================================================
 ADDITIONAL RESOURCES
-================================================================================
 
 AWS Lambda Documentation:
   https://docs.aws.amazon.com/lambda/
@@ -885,14 +848,9 @@ API Gateway Documentation:
 Terraform AWS Provider:
   https://registry.terraform.io/providers/hashicorp/aws/latest/docs
 
-================================================================================
 DOCUMENT INFORMATION
-================================================================================
 
 Document Owner: Infrastructure Team
 Review Cycle: Quarterly
 Next Review: 2026-05-02
 
-================================================================================
-END OF DOCUMENT
-================================================================================
