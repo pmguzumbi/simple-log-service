@@ -1,308 +1,489 @@
-# Database Design Documentation
+
+# Simple Log Service - Database Design
+
+**Version:** 2.0  
+**Last Updated:** 2026-02-02  
+**Status:** Production
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Database Selection](#database-selection)
+3. [Schema Design](#schema-design)
+4. [Access Patterns](#access-patterns)
+5. [Indexing Strategy](#indexing-strategy)
+6. [Data Modeling](#data-modeling)
+7. [Performance Optimization](#performance-optimization)
+8. [Backup & Recovery](#backup--recovery)
+9. [Future Enhancements](#future-enhancements)
+
+---
 
 ## Overview
 
-The Simple Log Service uses Amazon DynamoDB as its primary data store, optimized for high-throughput log ingestion and efficient time-based queries.
+Simple Log Service uses Amazon DynamoDB as its primary data store. This document explains the design decisions, schema structure, and optimization strategies.
 
-## Table Schema
+**Database:** Amazon DynamoDB  
+**Table Name:** `simple-log-service-logs-prod`  
+**Region:** us-east-1  
+**Billing Mode:** On-Demand
 
-### Primary Table: LogsTable
+---
 
-```
-Table Name: simple-log-service-{environment}-logs
-Billing Mode: Provisioned (with auto-scaling)
-Encryption: KMS customer-managed key
-Point-in-Time Recovery: Enabled
-Deletion Protection: Enabled
-```
+## Database Selection
 
-## Key Design
+### Why DynamoDB?
 
-### Primary Key
+**Requirements:**
+- High write throughput (1000+ logs/second)
+- Low latency reads (< 10ms)
+- Automatic scaling
+- No server management
+- Built-in encryption
+- Point-in-time recovery
 
-**Partition Key (HASH)**: `service_name` (String)
-- Distributes logs across partitions by service
-- Enables efficient queries for specific services
-- Supports multi-tenant architecture
+**Comparison Matrix:**
 
-**Sort Key (RANGE)**: `timestamp` (Number)
-- Unix timestamp (seconds since epoch)
-- Enables time-range queries
-- Supports chronological ordering
+| Feature | DynamoDB | RDS (PostgreSQL) | DocumentDB | ElastiCache |
+|---------|----------|------------------|------------|-------------|
+| **Latency** | < 10ms | 10-50ms | 10-30ms | < 1ms |
+| **Scaling** | Automatic | Manual | Manual | Manual |
+| **Management** | Serverless | Managed | Managed | Managed |
+| **Cost (Low Volume)** | $2/month | $15/month | $50/month | $12/month |
+| **Cost (High Volume)** | $65/month | $100/month | $150/month | $50/month |
+| **Encryption** | Built-in | Built-in | Built-in | Optional |
+| **Backup** | Automatic | Manual | Manual | Manual |
+| **Query Flexibility** | Limited | High | High | Limited |
 
-### Composite Key Benefits
-1. **Even Distribution**: Service names provide good partition distribution
-2. **Query Efficiency**: Time-based queries within a service are fast
-3. **Scalability**: Supports millions of logs per service
+**Decision:** DynamoDB selected for:
+- ✅ Single-digit millisecond latency
+- ✅ Automatic scaling (no capacity planning)
+- ✅ Serverless (no server management)
+- ✅ Cost-effective for variable workloads
+- ✅ Built-in encryption and backups
 
-## Attributes
+**Trade-offs:**
+- ⚠️ Limited query patterns (partition + sort key only)
+- ⚠️ No complex joins or aggregations
+- ⚠️ Eventual consistency by default
 
-### Required Attributes
+---
 
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| service_name | String | Service generating the log (PK) |
-| timestamp | Number | Unix timestamp in seconds (SK) |
-| log_id | String | Unique identifier (UUID) |
-| log_type | String | Log category (application, system, audit) |
-| level | String | Log level (INFO, WARN, ERROR, DEBUG) |
-| message | String | Log message content |
+## Schema Design
 
-### Optional Attributes
+### Table Structure
 
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| metadata | Map | Additional context (flexible schema) |
-| ttl | Number | Expiration timestamp (for auto-deletion) |
+**Table Name:** `simple-log-service-logs-prod`
 
-## Global Secondary Index
+**Primary Key:**
+- **Partition Key:** `service_name` (String)
+- **Sort Key:** `timestamp` (String, ISO 8601 format)
 
-### TimestampIndex
+**Attributes:**
+- `log_id` (String) - UUID v4, unique identifier
+- `log_type` (String) - application, system, audit, security
+- `level` (String) - INFO, WARN, ERROR, DEBUG, TRACE
+- `message` (String) - Log message content (max 400 KB)
+- `metadata` (Map) - Optional additional data (JSON)
 
-```
-Index Name: TimestampIndex
-Partition Key: log_type (String)
-Sort Key: timestamp (Number)
-Projection: ALL
-```
-
-**Purpose**: Enable efficient queries by log type across all services
-
-**Use Cases**:
-- Retrieve all application logs in last 24 hours
-- Query system logs by time range
-- Aggregate logs by type
-
-**Query Pattern**:
-```python
-table.query(
-    IndexName='TimestampIndex',
-    KeyConditionExpression=Key('log_type').eq('application') & 
-                          Key('timestamp').gte(cutoff_timestamp)
-)
-```
-
-## Access Patterns
-
-### Pattern 1: Query by Service and Time
-**Use Case**: Get recent logs for a specific service
-
-```python
-table.query(
-    KeyConditionExpression=Key('service_name').eq('api-service') & 
-                          Key('timestamp').between(start, end)
-)
-```
-
-**Performance**: O(log n) - Very efficient
-
-### Pattern 2: Query by Log Type and Time
-**Use Case**: Get all logs of a specific type
-
-```python
-table.query(
-    IndexName='TimestampIndex',
-    KeyConditionExpression=Key('log_type').eq('application') & 
-                          Key('timestamp').gte(cutoff)
-)
-```
-
-**Performance**: O(log n) - Efficient with GSI
-
-### Pattern 3: Scan Recent Logs
-**Use Case**: Get all recent logs (no filter)
-
-```python
-table.scan(
-    FilterExpression=Key('timestamp').gte(cutoff),
-    Limit=100
-)
-```
-
-**Performance**: O(n) - Less efficient, use sparingly
-
-## Capacity Planning
-
-### Read Capacity Units (RCU)
-
-**Base Capacity**: 5 RCU
-**Auto-Scaling**: 5-100 RCU (70% utilization target)
-
-**Calculation**:
-- 1 RCU = 1 strongly consistent read/sec (4 KB)
-- 1 RCU = 2 eventually consistent reads/sec (4 KB)
-
-**Example**:
-- 100 reads/sec of 1 KB items = 25 RCU (eventually consistent)
-
-### Write Capacity Units (WCU)
-
-**Base Capacity**: 5 WCU
-**Auto-Scaling**: 5-100 WCU (70% utilization target)
-
-**Calculation**:
-- 1 WCU = 1 write/sec (1 KB)
-
-**Example**:
-- 50 writes/sec of 2 KB items = 100 WCU
-
-## Data Retention
-
-### Current Strategy
-- **Retention**: Indefinite (manual deletion)
-- **Backup**: Point-in-time recovery (35 days)
-
-### Future Strategy (TTL)
-```python
-# Add TTL attribute during ingestion
-ttl_timestamp = current_timestamp + (90 * 24 * 60 * 60)  # 90 days
-
-log_entry = {
-    'service_name': 'api-service',
-    'timestamp': current_timestamp,
-    'ttl': ttl_timestamp,  # Auto-delete after 90 days
-    ...
+**Example Item:**
+```json
+{
+  "service_name": "api-gateway",
+  "timestamp": "2026-02-02T10:30:45.123Z",
+  "log_id": "550e8400-e29b-41d4-a716-446655440000",
+  "log_type": "application",
+  "level": "INFO",
+  "message": "Request processed successfully",
+  "metadata": {
+    "user_id": "12345",
+    "request_id": "abc-def-ghi",
+    "duration_ms": 150,
+    "status_code": 200
+  }
 }
 ```
 
-## Partition Strategy
+---
 
-### Hot Partition Avoidance
+### Key Design Decisions
 
-**Problem**: Single service generating high volume could create hot partition
+#### 1. Partition Key: `service_name`
 
-**Solutions**:
-1. **Composite Keys**: Service name + timestamp distributes writes
-2. **Write Sharding**: Add random suffix to service name if needed
-3. **Burst Capacity**: DynamoDB provides burst capacity for spikes
+**Rationale:**
+- Logs are naturally grouped by service
+- Enables efficient queries by service
+- Distributes load across partitions
+- Supports multi-tenant architecture
 
-### Example Sharding (if needed)
+**Considerations:**
+- Hot partitions if one service dominates traffic
+- Mitigation: Use composite partition key (service_name#date) for high-volume services
+
+---
+
+#### 2. Sort Key: `timestamp`
+
+**Rationale:**
+- Logs are time-series data
+- Enables range queries (last 24 hours, last week)
+- Natural sort order (newest first)
+- Supports pagination
+
+**Format:** ISO 8601 with milliseconds
+- Example: `2026-02-02T10:30:45.123Z`
+- Sortable as string
+- Human-readable
+- Timezone-aware (UTC)
+
+---
+
+#### 3. Attribute: `log_id`
+
+**Rationale:**
+- Unique identifier for each log entry
+- Enables idempotent writes
+- Supports deduplication
+- Facilitates log correlation
+
+**Format:** UUID v4
+- Example: `550e8400-e29b-41d4-a716-446655440000`
+- Globally unique
+- No collision risk
+- Generated by Lambda
+
+---
+
+#### 4. Attribute: `metadata`
+
+**Rationale:**
+- Flexible schema for additional data
+- No schema changes required
+- Supports diverse log types
+- Enables rich context
+
+**Structure:** JSON Map
+- Nested objects supported
+- Max size: 400 KB (DynamoDB item limit)
+- Optional field
+
+---
+
+## Access Patterns
+
+### Primary Access Patterns
+
+**1. Query logs by service (last 24 hours)**
 ```python
-# For very high-volume services
-shard_id = hash(log_id) % 10
-service_name_sharded = f"{service_name}#{shard_id}"
+response = table.query(
+    KeyConditionExpression=Key('service_name').eq('api-gateway') &
+                          Key('timestamp').between(start_time, end_time)
+)
 ```
 
-## Query Optimization
+**Performance:**
+- Latency: < 10ms
+- Cost: 1 RCU per 4 KB
+- Scalability: Unlimited (within partition limits)
 
-### Best Practices
+---
 
-1. **Use Query over Scan**: Always prefer Query when possible
-2. **Limit Results**: Use Limit parameter to control costs
-3. **Project Attributes**: Use ProjectionExpression for specific fields
-4. **Consistent Reads**: Use eventually consistent for better performance
-5. **Batch Operations**: Use BatchGetItem for multiple items
+**2. Query logs by service and level**
+```python
+response = table.query(
+    KeyConditionExpression=Key('service_name').eq('api-gateway') &
+                          Key('timestamp').between(start_time, end_time),
+    FilterExpression=Attr('level').eq('ERROR')
+)
+```
 
-### Anti-Patterns to Avoid
+**Performance:**
+- Latency: < 20ms (filter applied after query)
+- Cost: Same as query (filter doesn't reduce RCU)
+- Scalability: Good (filter in application layer)
 
-1. **Full Table Scans**: Expensive and slow
-2. **Large Items**: Keep items < 4 KB when possible
-3. **Hot Keys**: Avoid concentrating writes on single partition
-4. **Unbounded Queries**: Always use time ranges
+---
 
-## Backup and Recovery
+**3. Scan all recent logs (last 1 hour)**
+```python
+response = table.scan(
+    FilterExpression=Attr('timestamp').gte(one_hour_ago)
+)
+```
 
-### Point-in-Time Recovery (PITR)
-- **Enabled**: Yes
-- **Retention**: 35 days
-- **Granularity**: Per-second
-- **Recovery Time**: Minutes to hours
+**Performance:**
+- Latency: 100-500ms (depends on table size)
+- Cost: Scans entire table (expensive)
+- Scalability: Poor (avoid for large tables)
 
-### On-Demand Backups
-- **Frequency**: Manual or scheduled
-- **Retention**: Until deleted
-- **Use Case**: Pre-deployment snapshots
+**Recommendation:** Use sparingly, prefer query with service_name
 
-## Security
+---
 
-### Encryption at Rest
-- **Method**: KMS customer-managed key
-- **Key Rotation**: Enabled (annual)
-- **Access**: IAM-controlled
+### Secondary Access Patterns (Future)
 
-### Encryption in Transit
-- **Protocol**: TLS 1.2+
-- **Endpoints**: VPC endpoints available
+**4. Query logs by log_id (exact match)**
+- **Solution:** Global Secondary Index (GSI) on `log_id`
+- **Cost:** Additional storage + RCU/WCU
+- **Use case:** Log correlation, debugging
 
-### Access Control
-- **IAM Policies**: Least privilege
-- **Resource Policies**: Table-level permissions
-- **Condition Keys**: Fine-grained access
+**5. Query logs by level (all services)**
+- **Solution:** GSI on `level` (partition key) + `timestamp` (sort key)
+- **Cost:** Additional storage + RCU/WCU
+- **Use case:** Error monitoring, alerting
 
-## Monitoring
+**6. Query logs by metadata field (e.g., user_id)**
+- **Solution:** GSI on `metadata.user_id` (sparse index)
+- **Cost:** Additional storage + RCU/WCU
+- **Use case:** User activity tracking, compliance
 
-### Key Metrics
+---
 
-| Metric | Threshold | Action |
-|--------|-----------|--------|
-| ConsumedReadCapacity | > 70% | Scale up |
-| ConsumedWriteCapacity | > 70% | Scale up |
-| UserErrors | > 10/5min | Investigate |
-| SystemErrors | > 0 | Alert |
-| ThrottledRequests | > 0 | Scale up |
+## Indexing Strategy
 
-### CloudWatch Alarms
-- Throttling events
-- Capacity utilization
-- Error rates
-- Latency (p99)
+### Current Indexes
 
-## Cost Optimization
+**Primary Index:**
+- Partition Key: `service_name`
+- Sort Key: `timestamp`
+- Projection: ALL (all attributes)
 
-### Strategies
+**No Secondary Indexes (v1.0)**
+- Keeps costs low
+- Simplifies schema
+- Sufficient for current access patterns
 
-1. **Auto-Scaling**: Adjust capacity based on demand
-2. **GSI Projection**: Use KEYS_ONLY or INCLUDE when possible
-3. **Item Size**: Compress large items
-4. **TTL**: Auto-delete old logs
-5. **Reserved Capacity**: For predictable workloads
+---
 
-### Cost Breakdown (Monthly)
+### Future Indexes (Planned)
 
-**Base Configuration** (5 RCU/WCU):
-- Table: $2.50 (5 WCU) + $2.50 (5 RCU) = $5.00
-- GSI: $2.50 (5 WCU) + $2.50 (5 RCU) = $5.00
-- Storage: $0.25/GB
-- Backups: $0.20/GB
+**GSI 1: Log ID Index**
+```hcl
+resource "aws_dynamodb_table" "logs" {
+  global_secondary_index {
+    name               = "log-id-index"
+    hash_key           = "log_id"
+    projection_type    = "ALL"
+    read_capacity      = 5
+    write_capacity     = 5
+  }
+}
+```
 
-**Total**: ~$10-15/month (low volume)
+**Use Case:** Exact log lookup by ID
 
-## Performance Benchmarks
+---
 
-### Latency Targets
+**GSI 2: Level Index**
+```hcl
+resource "aws_dynamodb_table" "logs" {
+  global_secondary_index {
+    name               = "level-timestamp-index"
+    hash_key           = "level"
+    range_key          = "timestamp"
+    projection_type    = "ALL"
+    read_capacity      = 5
+    write_capacity     = 5
+  }
+}
+```
 
-| Operation | p50 | p99 | p99.9 |
-|-----------|-----|-----|-------|
-| PutItem | 10ms | 50ms | 100ms |
-| Query (service) | 15ms | 75ms | 150ms |
-| Query (GSI) | 20ms | 100ms | 200ms |
-| Scan | 50ms | 200ms | 500ms |
+**Use Case:** Query all ERROR logs across services
 
-### Throughput Targets
+---
 
-- **Writes**: 1000+ items/sec (with auto-scaling)
-- **Reads**: 2000+ items/sec (eventually consistent)
-- **Burst**: 3000 RCU/WCU for 300 seconds
+**GSI 3: Log Type Index**
+```hcl
+resource "aws_dynamodb_table" "logs" {
+  global_secondary_index {
+    name               = "log-type-timestamp-index"
+    hash_key           = "log_type"
+    range_key          = "timestamp"
+    projection_type    = "ALL"
+    read_capacity      = 5
+    write_capacity     = 5
+  }
+}
+```
 
-## Schema Evolution
+**Use Case:** Query by log type (audit, security, etc.)
 
-### Adding Attributes
-- **Method**: Add to new items only
-- **Backward Compatibility**: Handle missing attributes in code
-- **Migration**: Optional background job
+---
 
-### Changing Keys
-- **Method**: Create new table, migrate data
-- **Downtime**: Zero (dual-write pattern)
-- **Rollback**: Keep old table until verified
+## Data Modeling
 
-## Compliance
+### Item Size Optimization
 
-### AWS Config Rules
-- `dynamodb-table-encrypted-kms`
-- `dynamodb-pitr-enabled`
-- `dynamodb-autoscaling-enabled`
+**DynamoDB Limits:**
+- Max item size: 400 KB
+- Attribute name size counts toward limit
+- Nested attributes supported
 
-### Audit Trail
-- CloudTrail logs all API calls
-- DynamoDB Streams for change tracking (optional)
+**Optimization Strategies:**
+
+**1. Short Attribute Names**
+```json
+// Bad (verbose)
+{
+  "service_name": "api-gateway",
+  "timestamp": "2026-02-02T10:30:45.123Z",
+  "log_message": "Request processed"
+}
+
+// Good (concise)
+{
+  "svc": "api-gateway",
+  "ts": "2026-02-02T10:30:45.123Z",
+  "msg": "Request processed"
+}
+```
+
+**Savings:** ~30% reduction in item size
+
+---
+
+**2. Compress Large Messages**
+```python
+import gzip
+import base64
+
+# Compress message if > 10 KB
+if len(message) > 10240:
+    compressed = gzip.compress(message.encode())
+    message = base64.b64encode(compressed).decode()
+    metadata['compressed'] = True
+```
+
+**Savings:** 70-90% reduction for text data
+
+---
+
+**3. Store Large Payloads in S3**
+```python
+# If message > 100 KB, store in S3
+if len(message) > 102400:
+    s3_key = f"logs/{log_id}.json"
+    s3.put_object(Bucket='log-payloads', Key=s3_key, Body=message)
+    message = f"s3://{bucket}/{s3_key}"
+    metadata['s3_stored'] = True
+```
+
+**Savings:** Unlimited message size, lower DynamoDB costs
+
+---
+
+### Time-Series Data Optimization
+
+**Problem:** Old logs rarely accessed, but consume storage
+
+**Solution 1: Time-to-Live (TTL)**
+```hcl
+resource "aws_dynamodb_table" "logs" {
+  ttl {
+    attribute_name = "expiration_time"
+    enabled        = true
+  }
+}
+```
+
+**Implementation:**
+```python
+# Set expiration to 90 days from now
+expiration_time = int(time.time()) + (90 * 24 * 60 * 60)
+item['expiration_time'] = expiration_time
+```
+
+**Benefits:**
+- Automatic deletion (no Lambda required)
+- No cost for deletions
+- Reduces storage costs
+
+---
+
+**Solution 2: Archive to S3**
+```python
+# DynamoDB Streams + Lambda
+def archive_old_logs(event):
+    for record in event['Records']:
+        if record['eventName'] == 'REMOVE':  # TTL deletion
+            log_item = record['dynamodb']['OldImage']
+            s3_key = f"archive/{log_item['service_name']}/{log_item['timestamp']}.json"
+            s3.put_object(Bucket='log-archive', Key=s3_key, Body=json.dumps(log_item))
+```
+
+**Benefits:**
+- Long-term retention (years)
+- 90% cost reduction (S3 vs. DynamoDB)
+- Query with Athena
+
+---
+
+## Performance Optimization
+
+### Read Performance
+
+**1. Use Query Instead of Scan**
+```python
+# Bad (scans entire table)
+response = table.scan(
+    FilterExpression=Attr('service_name').eq('api-gateway')
+)
+
+# Good (queries specific partition)
+response = table.query(
+    KeyConditionExpression=Key('service_name').eq('api-gateway')
+)
+```
+
+**Performance Improvement:** 10-100x faster
+
+---
+
+**2. Use Consistent Reads Sparingly**
+```python
+# Default (eventually consistent, faster, cheaper)
+response = table.query(
+    KeyConditionExpression=Key('service_name').eq('api-gateway')
+)
+
+# Strongly consistent (slower, 2x cost)
+response = table.query(
+    KeyConditionExpression=Key('service_name').eq('api-gateway'),
+    ConsistentRead=True
+)
+```
+
+**Recommendation:** Use eventually consistent for logs (acceptable 1-2 second delay)
+
+---
+
+**3. Use Projection Expressions**
+```python
+# Bad (retrieves all attributes)
+response = table.query(
+    KeyConditionExpression=Key('service_name').eq('api-gateway')
+)
+
+# Good (retrieves only needed attributes)
+response = table.query(
+    KeyConditionExpression=Key('service_name').eq('api-gateway'),
+    ProjectionExpression='log_id, timestamp, level, message'
+)
+```
+
+**Performance Improvement:** 50-70% reduction in data transfer
+
+---
+
+### Write Performance
+
+**1. Use Batch Writes**
+```python
+# Bad (individual writes)
+for log in logs:
+    table.put_item(Item=log)
+
+# Good (batch writes, up to 25 items)
+with table.
