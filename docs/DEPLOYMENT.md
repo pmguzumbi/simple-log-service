@@ -31,7 +31,7 @@ Required Software
 Verify Installations:
 
 AWS Account Requirements
-• Active AWS account (Account ID: 033667696152)
+• Active AWS account (Account ID: <Account ID>)
 • IAM user with administrator access (or specific permissions below)
 • AWS CLI configured with credentials
 • Access to us-east-1 region (N. Virginia)
