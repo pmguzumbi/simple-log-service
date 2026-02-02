@@ -1,4 +1,3 @@
-
 # SNS topic for CloudWatch alarms
 resource "aws_sns_topic" "alarms" {
   name              = "${var.project_name}-alarms-${var.environment}"
