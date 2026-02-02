@@ -317,7 +317,7 @@ Code Standards
 
 Repository Information
 • Repository: https://github.com/pmguzumbi/simple-log-service
-• AWS Account: 033667696152
+• AWS Account: <Account ID>
 • Primary Region: us-east-1
 • Environment: Production (prod)
 
