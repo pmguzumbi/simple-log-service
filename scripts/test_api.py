@@ -159,12 +159,10 @@ def run_integration_test():
     print(f"Log Retrieval: {'✓ PASSED' if read_success else '✗ FAILED'}")
     
     if ingest_success and read_success:
-        print("
-✓ All tests passed!")
+        print("✓ All tests passed!")
         return 0
     else:
-        print("
-✗ Some tests failed")
+        print("✗ Some tests failed")
         return 1
 
 if __name__ == "__main__":
