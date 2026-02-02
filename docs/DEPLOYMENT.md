@@ -848,9 +848,3 @@ API Gateway Documentation:
 Terraform AWS Provider:
   https://registry.terraform.io/providers/hashicorp/aws/latest/docs
 
-DOCUMENT INFORMATION
-
-Document Owner: Infrastructure Team
-Review Cycle: Quarterly
-Next Review: 2026-05-02
-
