@@ -19,7 +19,7 @@ variable "aws_region" {
 variable "aws_account_id" {
   description = "AWS Account ID"
   type        = string
-  default     = "033667696152"
+  default     = "<Account ID>"
 }
 
 variable "enable_config" {
