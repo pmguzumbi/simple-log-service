@@ -1,17 +1,17 @@
 # IAM Authentication Configuration
-# Replace 033667696152 with your actual AWS account ID
+# Replace <Account ID> with your actual AWS account ID
 
 # Configure which AWS accounts/roles can assume the API access roles
 allowed_ingest_principals = [
-  "arn:aws:iam::033667696152:root"
+  "arn:aws:iam::<Account ID:root"
 ]
 
 allowed_read_principals = [
-  "arn:aws:iam::033667696152:root"
+  "arn:aws:iam::<Account ID>:root"
 ]
 
 allowed_full_access_principals = [
-  "arn:aws:iam::033667696152:root"
+  "arn:aws:iam::<Account ID>:root"
 ]
 
 # External IDs for additional security (change these to unique values)
