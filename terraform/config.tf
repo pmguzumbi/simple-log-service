@@ -1,4 +1,3 @@
-
 # AWS Config S3 bucket for configuration snapshots
 resource "aws_s3_bucket" "config" {
   count  = var.enable_config ? 1 : 0
