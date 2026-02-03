@@ -1,4 +1,3 @@
-# outputs.tf - Terraform outputs for Simple Log Service
 # This file defines output values that are NOT already defined in other files
 
 # DynamoDB outputs
