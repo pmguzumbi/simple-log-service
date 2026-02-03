@@ -1,4 +1,3 @@
-# Lambda Functions Configuration
 # Defines the ingest and read_recent Lambda functions with their configurations
 
 # Package the ingest Lambda function code
