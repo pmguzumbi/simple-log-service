@@ -3,7 +3,7 @@
 
 # Configure which AWS accounts/roles can assume the API access roles
 allowed_ingest_principals = [
-  "arn:aws:iam::<Account ID:root"
+  "arn:aws:iam::<Account ID>:root"
 ]
 
 allowed_read_principals = [
