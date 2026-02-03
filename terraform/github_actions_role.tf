@@ -1,3 +1,6 @@
+# Get current AWS account ID automatically
+data "aws_caller_identity" "current" {}
+
 # IAM role for GitHub Actions to deploy infrastructure via OIDC
 resource "aws_iam_role" "github_actions_deployment" {
   name        = "GitHubActionsDeploymentRole"
@@ -10,14 +13,14 @@ resource "aws_iam_role" "github_actions_deployment" {
       {
         Effect = "Allow"
         Principal = {
-          AWS = "arn:aws:iam::${var.aws_account_id}:root"
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
         }
         Action = "sts:AssumeRole"
       },
       {
         Effect = "Allow"
         Principal = {
-          Federated = "arn:aws:iam::${var.aws_account_id}:oidc-provider/token.actions.githubusercontent.com"
+          Federated = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com"
         }
         Action = "sts:AssumeRoleWithWebIdentity"
         Condition = {
@@ -51,4 +54,3 @@ output "github_actions_role_arn" {
   description = "ARN of the GitHub Actions deployment role"
   value       = aws_iam_role.github_actions_deployment.arn
 }
-
