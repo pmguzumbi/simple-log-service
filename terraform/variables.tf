@@ -1,3 +1,5 @@
+#This file defines the varialbles.
+
 variable "project_name" {
   description = "Name of the project"
   type        = string
