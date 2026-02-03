@@ -1,6 +1,3 @@
-# Get current AWS account ID automatically
-data "aws_caller_identity" "current" {}
-
 # IAM role for GitHub Actions to deploy infrastructure via OIDC
 resource "aws_iam_role" "github_actions_deployment" {
   name        = "GitHubActionsDeploymentRole"
