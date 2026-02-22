@@ -2,23 +2,32 @@ import json
 import os
 import uuid
 from datetime import datetime
-import boto3
 from botocore.exceptions import ClientError
 
-# Get table name - check both possible environment variable names
-TABLE_NAME = os.environ.get('TABLE_NAME') or os.environ.get('DYNAMODB_TABLE_NAME')
 
 def get_dynamodb_table():
-    """Get DynamoDB table resource"""
-    if not TABLE_NAME:
-        raise ValueError("TABLE_NAME environment variable is not set")
+    """
+    Get DynamoDB table resource.
+    Initializes boto3 inside function to allow tests to set environment variables first.
+    """
+    # Import boto3 inside function, not at module level
+    import boto3
+    
+    # Get table name - check both possible environment variable names
+    table_name = os.environ.get('TABLE_NAME') or os.environ.get('DYNAMODB_TABLE_NAME')
+    
+    if not table_name:
+        raise ValueError("TABLE_NAME or DYNAMODB_TABLE_NAME environment variable is not set")
+    
+    # Create DynamoDB resource after environment variables are set
     dynamodb = boto3.resource('dynamodb')
-    return dynamodb.Table(TABLE_NAME)
+    return dynamodb.Table(table_name)
+
 
 def lambda_handler(event, context):
     """
-    Lambda handler for ingesting log entries
-    Handles both API Gateway events and direct Lambda invocations
+    Lambda handler for ingesting log entries.
+    Handles both API Gateway events and direct Lambda invocations.
     """
     print(f"Received event type: {type(event)}")
     print(f"Event keys: {event.keys() if isinstance(event, dict) else 'Not a dict'}")
@@ -64,13 +73,14 @@ def lambda_handler(event, context):
             'message': body['message']
         }
         
+        # Add optional metadata
         if 'metadata' in body and body['metadata']:
             log_entry['metadata'] = body['metadata']
         
-        print(f"Writing to DynamoDB table: {TABLE_NAME}")
+        print(f"Writing to DynamoDB")
         print(f"Log entry: {json.dumps(log_entry)}")
         
-        # Store in DynamoDB
+        # Store in DynamoDB - table initialization happens here, after env vars are set
         table = get_dynamodb_table()
         table.put_item(Item=log_entry)
         
@@ -109,4 +119,3 @@ def lambda_handler(event, context):
             'headers': {'Content-Type': 'application/json'},
             'body': json.dumps({'error': 'Internal server error'})
         }
-
