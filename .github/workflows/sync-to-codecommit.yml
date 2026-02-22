@@ -1,0 +1,53 @@
+# .github/workflows/sync-to-codecommit.yml
+# Automatically syncs GitHub repository to AWS CodeCommit on push events
+
+name: Sync to AWS CodeCommit
+
+# Trigger on push to main, dev, and preprod branches
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - preprod
+
+jobs:
+  sync-to-codecommit:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # Step 1: Checkout the repository with full history
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for all branches and tags
+      
+      # Step 2: Configure Git with your identity
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+      
+      # Step 3: Add CodeCommit as remote repository
+      - name: Add CodeCommit remote
+        env:
+          CODECOMMIT_URL: ${{ secrets.AWS_CODECOMMIT_REPO_URL }}
+          CODECOMMIT_USERNAME: ${{ secrets.AWS_CODECOMMIT_USERNAME }}
+          CODECOMMIT_PASSWORD: ${{ secrets.AWS_CODECOMMIT_PASSWORD }}
+        run: |
+          # Extract repo URL and inject credentials
+          REPO_URL_WITH_CREDS=$(echo $CODECOMMIT_URL | sed "s|https://|https://${CODECOMMIT_USERNAME}:${CODECOMMIT_PASSWORD}@|")
+          git remote add codecommit $REPO_URL_WITH_CREDS
+      
+      # Step 4: Push to CodeCommit
+      - name: Push to CodeCommit
+        run: |
+          # Push current branch to CodeCommit
+          git push codecommit ${{ github.ref_name }} --force
+      
+      # Step 5: Verify sync
+      - name: Verify sync
+        run: |
+          echo "✅ Successfully synced branch '${{ github.ref_name }}' to AWS CodeCommit"
+          echo "Repository: ${{ secrets.AWS_CODECOMMIT_REPO_URL }}"
+          echo "Commit SHA: ${{ github.sha }}"
