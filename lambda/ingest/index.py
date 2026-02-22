@@ -2,7 +2,6 @@ import json
 import os
 import uuid
 from datetime import datetime
-from botocore.exceptions import ClientError
 
 
 def get_dynamodb_table():
@@ -10,8 +9,10 @@ def get_dynamodb_table():
     Get DynamoDB table resource.
     Initializes boto3 inside function to allow tests to set environment variables first.
     """
-    # Import boto3 inside function, not at module level
+    # Import boto3 and botocore inside function, not at module level
+    # This prevents credential validation errors during test imports
     import boto3
+    from botocore.exceptions import ClientError
     
     # Get table name - check both possible environment variable names
     table_name = os.environ.get('TABLE_NAME') or os.environ.get('DYNAMODB_TABLE_NAME')
@@ -29,6 +30,9 @@ def lambda_handler(event, context):
     Lambda handler for ingesting log entries.
     Handles both API Gateway events and direct Lambda invocations.
     """
+    # Import ClientError here for exception handling
+    from botocore.exceptions import ClientError
+    
     print(f"Received event type: {type(event)}")
     print(f"Event keys: {event.keys() if isinstance(event, dict) else 'Not a dict'}")
     
@@ -103,14 +107,15 @@ def lambda_handler(event, context):
             'headers': {'Content-Type': 'application/json'},
             'body': json.dumps({'error': error_msg})
         }
-    except ClientError as e:
-        print(f"ERROR: DynamoDB ClientError: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Failed to store log entry'})
-        }
     except Exception as e:
+        # Check if it's a ClientError without importing at module level
+        if e.__class__.__name__ == 'ClientError':
+            print(f"ERROR: DynamoDB ClientError: {str(e)}")
+            return {
+                'statusCode': 500,
+                'headers': {'Content-Type': 'application/json'},
+                'body': json.dumps({'error': 'Failed to store log entry'})
+            }
         print(f"ERROR: Unexpected error: {str(e)}")
         import traceback
         print(traceback.format_exc())
