@@ -1,4 +1,4 @@
-
+Simple Log Service Cost Estimation.
 
 Version: 2.0  
 Last Updated: 2026-02-02  
