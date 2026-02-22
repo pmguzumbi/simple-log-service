@@ -1,139 +1,181 @@
+"""
+Unit tests for the ingest Lambda function.
+Tests log ingestion with various scenarios including success cases,
+validation errors, and metadata handling.
+"""
 
-import json
 import os
 import sys
+
+# CRITICAL: Set fake AWS credentials BEFORE any boto3/moto imports
+# This prevents EndpointResolutionError in GitHub Actions
+os.environ['AWS_ACCESS_KEY_ID'] = 'testing'
+os.environ['AWS_SECRET_ACCESS_KEY'] = 'testing'
+os.environ['AWS_SECURITY_TOKEN'] = 'testing'
+os.environ['AWS_SESSION_TOKEN'] = 'testing'
+os.environ['AWS_DEFAULT_REGION'] = 'us-west-2'
+
+# Now safe to import boto3 and moto
+import json
 import pytest
 from moto import mock_aws
 import boto3
 
-# Add the parent directory to the path to allow imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+# Add parent directory to path to import Lambda handler
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from index import lambda_handler
 
-# Set environment variable before importing the handler
-os.environ['DYNAMODB_TABLE_NAME'] = 'test-logs-table'
-
-# Import the handler using importlib to avoid 'lambda' keyword issue
-import importlib.util
-spec = importlib.util.spec_from_file_location("ingest_handler", os.path.join(os.path.dirname(__file__), '..', 'index.py'))
-ingest_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(ingest_module)
-lambda_handler = ingest_module.lambda_handler
 
 @pytest.fixture
-def aws_credentials():
-    """Mocked AWS Credentials for moto"""
-    os.environ['AWS_ACCESS_KEY_ID'] = 'testing'
-    os.environ['AWS_SECRET_ACCESS_KEY'] = 'testing'
-    os.environ['AWS_SECURITY_TOKEN'] = 'testing'
-    os.environ['AWS_SESSION_TOKEN'] = 'testing'
-    os.environ['AWS_DEFAULT_REGION'] = 'us-east-1'
-
-@pytest.fixture
-def dynamodb_table(aws_credentials):
-    """Create a mocked DynamoDB table"""
+def dynamodb_table():
+    """
+    Create a mocked DynamoDB table for testing.
+    This fixture runs before each test and provides a clean table.
+    Uses mock_aws context manager to intercept boto3 calls.
+    """
     with mock_aws():
-        # Create DynamoDB resource
-        dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
+        # Create DynamoDB resource with mocked AWS services
+        dynamodb = boto3.resource('dynamodb', region_name='us-west-2')
         
-        # Create table
+        # Create test table matching production schema
         table = dynamodb.create_table(
-            TableName='test-logs-table',
+            TableName='simple-log-service-logs-prod',
             KeySchema=[
-                {'AttributeName': 'log_id', 'KeyType': 'HASH'}
+                {'AttributeName': 'log_id', 'KeyType': 'HASH'},      # Partition key
+                {'AttributeName': 'timestamp', 'KeyType': 'RANGE'}   # Sort key
             ],
             AttributeDefinitions=[
-                {'AttributeName': 'log_id', 'AttributeType': 'S'}
+                {'AttributeName': 'log_id', 'AttributeType': 'S'},
+                {'AttributeName': 'timestamp', 'AttributeType': 'S'}
             ],
-            BillingMode='PAY_PER_REQUEST'
+            BillingMode='PAY_PER_REQUEST'  # On-demand billing for test
         )
         
-        # Wait for table to be created
-        table.meta.client.get_waiter('table_exists').wait(TableName='test-logs-table')
+        # Wait for table creation to complete
+        table.meta.client.get_waiter('table_exists').wait(
+            TableName='simple-log-service-logs-prod'
+        )
+        
+        # Set environment variable for Lambda handler
+        os.environ['DYNAMODB_TABLE'] = 'simple-log-service-logs-prod'
         
         yield table
 
+
 def test_ingest_log_success(dynamodb_table):
-    """Test successful log ingestion"""
-    with mock_aws():
-        event = {
-            'body': json.dumps({
-                'service_name': 'test-service',
-                'log_type': 'application',
-                'level': 'INFO',
-                'message': 'Test log message'
-            })
-        }
-        
-        response = lambda_handler(event, None)
-        
-        assert response['statusCode'] == 201
-        
-        body = json.loads(response['body'])
-        assert 'log_id' in body
-        assert body['message'] == 'Log entry created successfully'
-        
-        # Verify item was stored in DynamoDB
-        stored_item = dynamodb_table.get_item(Key={'log_id': body['log_id']})
-        assert 'Item' in stored_item
-        assert stored_item['Item']['service_name'] == 'test-service'
-        assert stored_item['Item']['level'] == 'INFO'
+    """
+    Test successful log ingestion with all required fields.
+    Verifies that log entry is stored correctly in DynamoDB with proper attributes.
+    """
+    # Prepare test event with valid log data
+    event = {
+        'body': json.dumps({
+            'message': 'Test log message',
+            'level': 'INFO',
+            'service': 'test-service'
+        })
+    }
+    
+    # Invoke Lambda handler
+    response = lambda_handler(event, None)
+    
+    # Verify HTTP response
+    assert response['statusCode'] == 200, f"Expected 200, got {response['statusCode']}"
+    
+    # Parse response body
+    body = json.loads(response['body'])
+    assert 'log_id' in body, "Response missing log_id"
+    assert 'timestamp' in body, "Response missing timestamp"
+    assert body['message'] == 'Log ingested successfully'
+    
+    # Verify log was stored in DynamoDB
+    log_id = body['log_id']
+    timestamp = body['timestamp']
+    item = dynamodb_table.get_item(Key={'log_id': log_id, 'timestamp': timestamp})
+    
+    assert 'Item' in item, "Log not found in DynamoDB"
+    assert item['Item']['message'] == 'Test log message'
+    assert item['Item']['level'] == 'INFO'
+    assert item['Item']['service'] == 'test-service'
+
 
 def test_ingest_log_missing_required_field(dynamodb_table):
-    """Test ingestion with missing required field"""
-    with mock_aws():
-        event = {
-            'body': json.dumps({
-                'service_name': 'test-service',
-                'log_type': 'application',
-                'level': 'INFO'
-                # Missing 'message' field
-            })
-        }
-        
-        response = lambda_handler(event, None)
-        
-        assert response['statusCode'] == 400
-        body = json.loads(response['body'])
-        assert 'error' in body
-        assert 'message' in body['error'].lower()
+    """
+    Test log ingestion with missing required field (message).
+    Should return 400 Bad Request error with descriptive message.
+    """
+    # Prepare event with missing 'message' field
+    event = {
+        'body': json.dumps({
+            'level': 'ERROR',
+            'service': 'test-service'
+        })
+    }
+    
+    # Invoke Lambda handler
+    response = lambda_handler(event, None)
+    
+    # Verify error response
+    assert response['statusCode'] == 400, f"Expected 400, got {response['statusCode']}"
+    
+    # Parse error body
+    body = json.loads(response['body'])
+    assert 'error' in body, "Response missing error field"
+    assert 'message' in body['error'].lower(), "Error message should mention missing 'message' field"
+
 
 def test_ingest_log_invalid_json(dynamodb_table):
-    """Test ingestion with invalid JSON"""
-    with mock_aws():
-        event = {
-            'body': 'invalid json {'
-        }
-        
-        response = lambda_handler(event, None)
-        
-        assert response['statusCode'] == 400
-        body = json.loads(response['body'])
-        assert 'error' in body
+    """
+    Test log ingestion with invalid JSON in request body.
+    Should return 400 Bad Request error for malformed JSON.
+    """
+    # Prepare event with malformed JSON
+    event = {
+        'body': 'invalid json string {not valid}'
+    }
+    
+    # Invoke Lambda handler
+    response = lambda_handler(event, None)
+    
+    # Verify error response
+    assert response['statusCode'] == 400, f"Expected 400, got {response['statusCode']}"
+    
+    # Parse error body
+    body = json.loads(response['body'])
+    assert 'error' in body, "Response missing error field"
+
 
 def test_ingest_log_with_metadata(dynamodb_table):
-    """Test ingestion with optional metadata"""
-    with mock_aws():
-        event = {
-            'body': json.dumps({
-                'service_name': 'test-service',
-                'log_type': 'application',
-                'level': 'ERROR',
-                'message': 'Test error message',
-                'metadata': {
-                    'user_id': '12345',
-                    'request_id': 'abc-def-ghi'
-                }
-            })
-        }
-        
-        response = lambda_handler(event, None)
-        
-        assert response['statusCode'] == 201
-        
-        body = json.loads(response['body'])
-        
-        # Verify metadata was stored
-        stored_item = dynamodb_table.get_item(Key={'log_id': body['log_id']})
-        assert 'metadata' in stored_item['Item']
-        assert stored_item['Item']['metadata']['user_id'] == '12345'
+    """
+    Test log ingestion with optional metadata fields.
+    Verifies that additional fields are stored correctly alongside required fields.
+    """
+    # Prepare event with metadata
+    event = {
+        'body': json.dumps({
+            'message': 'Test log with metadata',
+            'level': 'WARNING',
+            'service': 'test-service',
+            'user_id': 'user123',
+            'request_id': 'req-456',
+            'environment': 'production'
+        })
+    }
+    
+    # Invoke Lambda handler
+    response = lambda_handler(event, None)
+    
+    # Verify response
+    assert response['statusCode'] == 200, f"Expected 200, got {response['statusCode']}"
+    body = json.loads(response['body'])
+    
+    # Verify metadata was stored in DynamoDB
+    log_id = body['log_id']
+    timestamp = body['timestamp']
+    item = dynamodb_table.get_item(Key={'log_id': log_id, 'timestamp': timestamp})
+    
+    assert 'Item' in item, "Log not found in DynamoDB"
+    assert item['Item']['user_id'] == 'user123'
+    assert item['Item']['request_id'] == 'req-456'
+    assert item['Item']['environment'] == 'production'
 
