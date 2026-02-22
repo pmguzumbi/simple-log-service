@@ -1,3 +1,5 @@
+
+
 name: Deploy Simple Log Service
 
 on:
@@ -22,7 +24,6 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  AWS_ACCOUNT_ID: '<Account-ID>'
   TERRAFORM_VERSION: '1.5.0'
   PYTHON_VERSION: '3.11'
 
@@ -77,12 +78,12 @@ jobs:
       
       - name: Run Lambda unit tests
         env:
-          # Fake AWS credentials for Moto mocking - required for mock_aws decorator
           AWS_ACCESS_KEY_ID: testing
           AWS_SECRET_ACCESS_KEY: testing
           AWS_SECURITY_TOKEN: testing
           AWS_SESSION_TOKEN: testing
           AWS_DEFAULT_REGION: us-west-2
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
         run: |
           pytest lambda/ingest/tests/ -v
           pytest lambda/read_recent/tests/ -v
@@ -109,7 +110,7 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/GitHubActionsDeploymentRole
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsDeploymentRole
           role-session-name: github-actions-terraform-plan
           aws-region: ${{ env.AWS_REGION }}
           role-duration-seconds: 3600
@@ -176,7 +177,7 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/GitHubActionsDeploymentRole
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsDeploymentRole
           role-session-name: github-actions-terraform-apply
           aws-region: ${{ env.AWS_REGION }}
           role-duration-seconds: 3600
@@ -221,7 +222,7 @@ jobs:
           echo "**API Gateway URL:** ${{ steps.terraform-outputs.outputs.api_url }}" >> $GITHUB_STEP_SUMMARY
           echo "**DynamoDB Table:** ${{ steps.terraform-outputs.outputs.table_name }}" >> $GITHUB_STEP_SUMMARY
           echo "**Region:** ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Account:** ${{ env.AWS_ACCOUNT_ID }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Account:** ${{ secrets.AWS_ACCOUNT_ID }}" >> $GITHUB_STEP_SUMMARY
 
   manual-deploy:
     name: Manual Deploy
@@ -237,7 +238,7 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/GitHubActionsDeploymentRole
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsDeploymentRole
           role-session-name: github-actions-manual-deploy
           aws-region: ${{ env.AWS_REGION }}
           role-duration-seconds: 3600
