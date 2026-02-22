@@ -76,6 +76,13 @@ jobs:
           pip install -r lambda/read_recent/requirements.txt
       
       - name: Run Lambda unit tests
+        env:
+          # Fake AWS credentials for Moto mocking - required for mock_aws decorator
+          AWS_ACCESS_KEY_ID: testing
+          AWS_SECRET_ACCESS_KEY: testing
+          AWS_SECURITY_TOKEN: testing
+          AWS_SESSION_TOKEN: testing
+          AWS_DEFAULT_REGION: us-west-2
         run: |
           pytest lambda/ingest/tests/ -v
           pytest lambda/read_recent/tests/ -v
@@ -253,4 +260,3 @@ jobs:
       - name: Deployment notification
         run: |
           echo "Deployed to ${{ github.event.inputs.environment }} environment"
-
